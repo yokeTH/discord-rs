@@ -81,8 +81,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: ${{ github.event_name != 'pull_request' }}
 
-          cache-from: type=gha,scope=${{ matrix.app }}-${{ matrix.arch }}
-          cache-to: type=gha,scope=${{ matrix.app }}-${{ matrix.arch }},mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ env.REPO_NAME }}/${{ matrix.app }}:buildcache-${{ matrix.arch }}
+          cache-to: type=registry,ref=ghcr.io/${{ env.REPO_NAME }}/${{ matrix.app }}:buildcache-${{ matrix.arch }},mode=max
 
           build-args: |
             APP_NAME=${{ matrix.app }}
