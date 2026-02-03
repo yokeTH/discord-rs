@@ -32,11 +32,13 @@ jobs:
 
       - id: apps
         run: |
-          set -e
-          # Find apps that have a Dockerfile
-          APPS=$(find apps -mindepth 2 -maxdepth 2 -name Dockerfile -printf '%h\n' | sed 's#^apps/##' | sort -u)
-          # Convert to JSON array
-          JSON=$(printf '%s\n' "$APPS" | jq -R . | jq -s .)
+          set -euo pipefail
+
+          APPS=$(find apps -mindepth 2 -maxdepth 2 -name Dockerfile -printf '%h\n' \
+            | sed 's#^apps/##' | sort -u)
+
+          JSON=$(printf '%s\n' "$APPS" | jq -R . | jq -s -c .)
+
           echo "apps=$JSON" >> "$GITHUB_OUTPUT"
 
   build:
@@ -48,11 +50,14 @@ jobs:
       fail-fast: false
       matrix:
         app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+        arch: [amd64, arm64]
         include:
-          - platform: linux/amd64
+          - arch: amd64
+            platform: linux/amd64
             runner: ubuntu-latest
             suffix: amd64
-          - platform: linux/arm64
+          - arch: arm64
+            platform: linux/arm64
             runner: ubuntu-24.04-arm
             suffix: arm64
 
@@ -66,6 +71,10 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ github.token }}
+
+      - name: Short SHA
+        id: vars
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push by digest
         id: build
@@ -82,7 +91,7 @@ jobs:
 
           build-args: |
             APP_NAME=${{ matrix.app }}
-            APP_VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha[0:7] }}
+            APP_VERSION=${{ github.ref_type == 'tag' && github.ref_name || steps.vars.outputs.short_sha }}
 
           outputs: type=image,name=ghcr.io/${{ env.REPO_NAME }}/${{ matrix.app }},push-by-digest=true,name-canonical=true
 
