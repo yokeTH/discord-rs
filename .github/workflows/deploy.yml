@@ -198,19 +198,33 @@ jobs:
           name: manifest-digests
           path: /tmp/manifests
 
-      - name: Resolve manifest digest for app
+      - name: Resolve image for app
         id: md
         run: |
+          set -euo pipefail
           APP="${{ matrix.app }}"
-          DIGEST=$(awk -v app="$APP" '$1==app {print $2}' /tmp/manifests/manifest-digests.txt)
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            # Use the tag directly
+            IMAGE="ghcr.io/${{ env.REPO_NAME }}/${APP}:${GITHUB_REF_NAME}"
+          else
+            # Use the manifest digest (immutable)
+            DIGEST=$(awk -v app="$APP" '$1==app {print $2}' /tmp/manifests/manifest-digests.txt)
+            if [ -z "${DIGEST:-}" ]; then
+              echo "No digest found for $APP" >&2
+              exit 1
+            fi
+            IMAGE="ghcr.io/${{ env.REPO_NAME }}/${APP}@${DIGEST}"
+          fi
+
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
       - uses: deploys-app/deploys-action@v1
         with:
           project: ${{ secrets.DEPLOYS_PROJECT }}
           location: gke.cluster-rcf2
           name: ${{ secrets[format('DEPLOYS_DEPLOY_NAME_{0}', matrix.app)] }}
-          image: ghcr.io/${{ env.REPO_NAME }}/${{ matrix.app }}@${{ steps.md.outputs.digest }}
+          image: ${{ steps.md.outputs.image }}
         env:
           DEPLOYS_AUTH_USER: ${{ secrets.DEPLOYS_AUTH_USER }}
           DEPLOYS_AUTH_PASS: ${{ secrets.DEPLOYS_AUTH_PASS }}
