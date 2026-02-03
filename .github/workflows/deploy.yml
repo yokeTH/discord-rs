@@ -55,11 +55,9 @@ jobs:
           - arch: amd64
             platform: linux/amd64
             runner: ubuntu-latest
-            suffix: amd64
           - arch: arm64
             platform: linux/arm64
             runner: ubuntu-24.04-arm
-            suffix: arm64
 
     steps:
       - uses: actions/checkout@v4
@@ -86,8 +84,8 @@ jobs:
 
           push: ${{ github.event_name != 'pull_request' }}
 
-          cache-from: type=gha,scope=${{ matrix.app }}-${{ matrix.suffix }}
-          cache-to: type=gha,scope=${{ matrix.app }}-${{ matrix.suffix }},mode=max
+          cache-from: type=gha,scope=${{ matrix.app }}-${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.app }}-${{ matrix.arch }},mode=max
 
           build-args: |
             APP_NAME=${{ matrix.app }}
@@ -106,7 +104,7 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.app }}-${{ matrix.suffix }}
+          name: digests-${{ matrix.app }}-${{ matrix.arch }}
           path: /tmp/digests/${{ matrix.app }}/*
           if-no-files-found: error
           retention-days: 1
