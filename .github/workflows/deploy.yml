@@ -33,12 +33,10 @@ jobs:
       - id: apps
         run: |
           set -euo pipefail
-
           APPS=$(find apps -mindepth 2 -maxdepth 2 -name Dockerfile -printf '%h\n' \
             | sed 's#^apps/##' | sort -u)
 
           JSON=$(printf '%s\n' "$APPS" | jq -R . | jq -s -c .)
-
           echo "apps=$JSON" >> "$GITHUB_OUTPUT"
 
   build:
@@ -81,7 +79,6 @@ jobs:
           context: .
           file: ./apps/${{ matrix.app }}/Dockerfile
           platforms: ${{ matrix.platform }}
-
           push: ${{ github.event_name != 'pull_request' }}
 
           cache-from: type=gha,scope=${{ matrix.app }}-${{ matrix.arch }}
@@ -93,20 +90,20 @@ jobs:
 
           outputs: type=image,name=ghcr.io/${{ env.REPO_NAME }}/${{ matrix.app }},push-by-digest=true,name-canonical=true
 
+      # filename now: <app>-<arch>-<digest>
       - name: Export digest
         if: ${{ github.event_name != 'pull_request' }}
         run: |
-          mkdir -p /tmp/digests/${{ matrix.app }}
+          mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${{ matrix.app }}/${digest#sha256:}"
+          touch "/tmp/digests/${{ matrix.app }}-${{ matrix.arch }}-${digest#sha256:}"
 
       - name: Upload digest
         if: ${{ github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v4
         with:
           name: digests-${{ matrix.app }}-${{ matrix.arch }}
-          path: /tmp/digests/${{ matrix.app }}/*
-          if-no-files-found: error
+          path: /tmp/digests/*
           retention-days: 1
 
   merge:
@@ -117,8 +114,7 @@ jobs:
       REPO_NAME: ${{ needs.prepare.outputs.repo_name }}
       APPS: ${{ needs.prepare.outputs.apps }}
     steps:
-      - name: Download digests
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: /tmp/digests
           pattern: digests-*
@@ -135,6 +131,7 @@ jobs:
       - name: Create manifest lists and capture manifest digests
         run: |
           set -eux
+          shopt -s nullglob
 
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             TAG="$GITHUB_REF_NAME"
@@ -150,9 +147,17 @@ jobs:
           : > /tmp/manifests/manifest-digests.txt
 
           for app in $apps; do
+            files=(/tmp/digests/${app}-*)
+
+            if [ ${#files[@]} -eq 0 ]; then
+              echo "No digests found for $app"
+              exit 1
+            fi
+
             SOURCES=""
-            for f in /tmp/digests/$app/*; do
-              SOURCES="$SOURCES ghcr.io/${REPO_NAME}/${app}@sha256:$(basename "$f")"
+            for f in "${files[@]}"; do
+              DIGEST="${f##*-}"
+              SOURCES="$SOURCES ghcr.io/${REPO_NAME}/${app}@sha256:${DIGEST}"
             done
 
             docker buildx imagetools create \
@@ -166,12 +171,10 @@ jobs:
             echo "$app $MDIGEST" >> /tmp/manifests/manifest-digests.txt
           done
 
-      - name: Upload manifest digests
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: manifest-digests
           path: /tmp/manifests/manifest-digests.txt
-          retention-days: 1
 
   deploy:
     if: ${{ github.event_name != 'pull_request' }}
@@ -183,8 +186,7 @@ jobs:
     env:
       REPO_NAME: ${{ needs.prepare.outputs.repo_name }}
     steps:
-      - name: Download manifest digests
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: manifest-digests
           path: /tmp/manifests
@@ -192,17 +194,11 @@ jobs:
       - name: Resolve manifest digest for app
         id: md
         run: |
-          set -euo pipefail
           APP="${{ matrix.app }}"
           DIGEST=$(awk -v app="$APP" '$1==app {print $2}' /tmp/manifests/manifest-digests.txt)
-          if [ -z "$DIGEST" ]; then
-            echo "No digest found for $APP" >&2
-            exit 1
-          fi
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy ${{ matrix.app }} by digest
-        uses: deploys-app/deploys-action@v1
+      - uses: deploys-app/deploys-action@v1
         with:
           project: ${{ secrets.DEPLOYS_PROJECT }}
           location: gke.cluster-rcf2
