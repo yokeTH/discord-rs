@@ -148,9 +148,8 @@ jobs:
 
           for app in $apps; do
             files=(/tmp/digests/${app}-*)
-
             if [ ${#files[@]} -eq 0 ]; then
-              echo "No digests found for $app"
+              echo "No digests found for $app" >&2
               exit 1
             fi
 
@@ -164,9 +163,17 @@ jobs:
               -t ghcr.io/${REPO_NAME}/${app}:$TAG \
               $SOURCES
 
-            MDIGEST=$(docker buildx imagetools inspect \
-              --format '{{.Manifest.Digest}}' \
-              ghcr.io/${REPO_NAME}/${app}:$TAG)
+            MDIGEST=$(
+              docker buildx imagetools inspect \
+                --format '{{json .Manifest}}' \
+                ghcr.io/${REPO_NAME}/${app}:$TAG \
+              | jq -r '.digest'
+            )
+
+            if [ -z "$MDIGEST" ] || [ "$MDIGEST" = "null" ]; then
+              echo "Failed to read manifest digest for $app" >&2
+              exit 1
+            fi
 
             echo "$app $MDIGEST" >> /tmp/manifests/manifest-digests.txt
           done
