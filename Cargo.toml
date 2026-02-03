@@ -1,7 +1,8 @@
 [workspace]
 resolver = "3"
-members = []
+members = ["apps/bot"]
 
 [workspace.dependencies]
 anyhow = "1"
+log = "0.4.29"
 tokio = { version = "1", features = ["full"] }
