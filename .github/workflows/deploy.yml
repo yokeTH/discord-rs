@@ -1,0 +1,206 @@
+name: Deploy
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-*"
+    branches:
+      - dev
+      - main
+  pull_request:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      repo_name: ${{ steps.repo.outputs.name }}
+      apps: ${{ steps.apps.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: repo
+        run: echo "name=$(echo $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - id: apps
+        run: |
+          set -e
+          # Find apps that have a Dockerfile
+          APPS=$(find apps -mindepth 2 -maxdepth 2 -name Dockerfile -printf '%h\n' | sed 's#^apps/##' | sort -u)
+          # Convert to JSON array
+          JSON=$(printf '%s\n' "$APPS" | jq -R . | jq -s .)
+          echo "apps=$JSON" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    env:
+      REPO_NAME: ${{ needs.prepare.outputs.repo_name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            suffix: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            suffix: arm64
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        if: ${{ github.event_name != 'pull_request' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/${{ matrix.app }}/Dockerfile
+          platforms: ${{ matrix.platform }}
+
+          push: ${{ github.event_name != 'pull_request' }}
+
+          cache-from: type=gha,scope=${{ matrix.app }}-${{ matrix.suffix }}
+          cache-to: type=gha,scope=${{ matrix.app }}-${{ matrix.suffix }},mode=max
+
+          build-args: |
+            APP_NAME=${{ matrix.app }}
+            APP_VERSION=${{ github.ref_type == 'tag' && github.ref_name || github.sha[0:7] }}
+
+          outputs: type=image,name=ghcr.io/${{ env.REPO_NAME }}/${{ matrix.app }},push-by-digest=true,name-canonical=true
+
+      - name: Export digest
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          mkdir -p /tmp/digests/${{ matrix.app }}
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${{ matrix.app }}/${digest#sha256:}"
+
+      - name: Upload digest
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.app }}-${{ matrix.suffix }}
+          path: /tmp/digests/${{ matrix.app }}/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    needs: [prepare, build]
+    env:
+      REPO_NAME: ${{ needs.prepare.outputs.repo_name }}
+      APPS: ${{ needs.prepare.outputs.apps }}
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ github.token }}
+
+      - name: Create manifest lists and capture manifest digests
+        run: |
+          set -eux
+
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="$GITHUB_REF_NAME"
+          elif [ "$GITHUB_REF_NAME" = "main" ]; then
+            TAG="main"
+          else
+            TAG="$GITHUB_REF_NAME"
+          fi
+
+          apps=$(echo '${{ env.APPS }}' | jq -r '.[]')
+
+          mkdir -p /tmp/manifests
+          : > /tmp/manifests/manifest-digests.txt
+
+          for app in $apps; do
+            SOURCES=""
+            for f in /tmp/digests/$app/*; do
+              SOURCES="$SOURCES ghcr.io/${REPO_NAME}/${app}@sha256:$(basename "$f")"
+            done
+
+            docker buildx imagetools create \
+              -t ghcr.io/${REPO_NAME}/${app}:$TAG \
+              $SOURCES
+
+            MDIGEST=$(docker buildx imagetools inspect \
+              --format '{{.Manifest.Digest}}' \
+              ghcr.io/${REPO_NAME}/${app}:$TAG)
+
+            echo "$app $MDIGEST" >> /tmp/manifests/manifest-digests.txt
+          done
+
+      - name: Upload manifest digests
+        uses: actions/upload-artifact@v4
+        with:
+          name: manifest-digests
+          path: /tmp/manifests/manifest-digests.txt
+          retention-days: 1
+
+  deploy:
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    needs: [prepare, merge]
+    strategy:
+      matrix:
+        app: ${{ fromJSON(needs.prepare.outputs.apps) }}
+    env:
+      REPO_NAME: ${{ needs.prepare.outputs.repo_name }}
+    steps:
+      - name: Download manifest digests
+        uses: actions/download-artifact@v4
+        with:
+          name: manifest-digests
+          path: /tmp/manifests
+
+      - name: Resolve manifest digest for app
+        id: md
+        run: |
+          set -euo pipefail
+          APP="${{ matrix.app }}"
+          DIGEST=$(awk -v app="$APP" '$1==app {print $2}' /tmp/manifests/manifest-digests.txt)
+          if [ -z "$DIGEST" ]; then
+            echo "No digest found for $APP" >&2
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy ${{ matrix.app }} by digest
+        uses: deploys-app/deploys-action@v1
+        with:
+          project: ${{ secrets.DEPLOYS_PROJECT }}
+          location: gke.cluster-rcf2
+          name: ${{ secrets[format('DEPLOYS_DEPLOY_NAME_{0}', matrix.app)] }}
+          image: ghcr.io/${{ env.REPO_NAME }}/${{ matrix.app }}@${{ steps.md.outputs.digest }}
+        env:
+          DEPLOYS_AUTH_USER: ${{ secrets.DEPLOYS_AUTH_USER }}
+          DEPLOYS_AUTH_PASS: ${{ secrets.DEPLOYS_AUTH_PASS }}
