@@ -21,7 +21,7 @@ RUN mkdir -p apps/bot/src libs/stock/src \
 
 RUN cargo build -p bot --release
 
-COPY . .
+COPY apps/bot apps/bot
 
 RUN cargo build -p bot --release
 
