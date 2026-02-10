@@ -1,5 +1,5 @@
 use crate::{Context, Error};
-use log::{info, warn};
+use log::{debug, info, warn};
 
 #[poise::command(slash_command)]
 pub async fn watch(
@@ -8,7 +8,10 @@ pub async fn watch(
 ) -> Result<(), Error> {
     ctx.defer().await?;
 
+    let user_id = ctx.author().id.get();
     let store = &ctx.data().symbol_store;
+
+    info!("watch: invoked user_id={} raw_input={}", user_id, symbol);
 
     let symbols: Vec<String> = symbol
         .split(',')
@@ -16,38 +19,52 @@ pub async fn watch(
         .filter(|s| !s.is_empty())
         .collect();
 
-    info!(
-        "User {} requested to watch symbols: {:?}",
-        ctx.author().id,
-        symbols
-    );
-
     if symbols.is_empty() {
-        warn!("No valid symbols provided by user {}", ctx.author().id);
+        warn!(
+            "watch: no valid symbols user_id={} raw_input={}",
+            user_id, symbol
+        );
         ctx.say("No valid symbols provided.").await?;
         return Ok(());
     }
 
-    let mut added = Vec::new();
-    let mut already = Vec::new();
+    info!(
+        "watch: parsed symbols user_id={} count={} symbols=[{}]",
+        user_id,
+        symbols.len(),
+        symbols.join(", ")
+    );
+
+    let mut added: Vec<String> = Vec::new();
+    let mut already: Vec<String> = Vec::new();
 
     for sym in symbols {
-        if store.add(&sym).await? {
-            info!(
-                "Added symbol '{}' to watchlist for user {}",
-                sym,
-                ctx.author().id
-            );
-            added.push(sym);
-        } else {
-            info!(
-                "Symbol '{}' was already being watched for user {}",
-                sym,
-                ctx.author().id
-            );
-            already.push(sym);
+        match store.add(&sym).await {
+            Ok(true) => {
+                debug!("watch: added user_id={} symbol={}", user_id, sym);
+                added.push(sym);
+            }
+            Ok(false) => {
+                debug!("watch: already_watched user_id={} symbol={}", user_id, sym);
+                already.push(sym);
+            }
+            Err(e) => {
+                // keep the error visible and return early, so caller sees failure
+                warn!(
+                    "watch: store.add failed user_id={} symbol={} err={:?}",
+                    user_id, sym, e
+                );
+                return Err(e.into());
+            }
         }
     }
+
+    info!(
+        "watch: completed user_id={} added_count={} already_count={}",
+        user_id,
+        added.len(),
+        already.len()
+    );
 
     if !added.is_empty() {
         ctx.say(format!("Now watching: {}", added.join(", ")))

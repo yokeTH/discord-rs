@@ -71,9 +71,9 @@ pub fn generate_chart(
         dates.len()
     );
 
-    const LOOKBACK: usize = 180;
-    const WIDTH: u32 = 960;
-    const HEIGHT: u32 = 540;
+    const LOOKBACK: usize = 90;
+    const WIDTH: u32 = 1920;
+    const HEIGHT: u32 = 1080;
 
     let lookback = LOOKBACK.min(prices.len());
     let start_idx = prices.len().saturating_sub(lookback);
@@ -134,7 +134,7 @@ pub fn generate_chart(
                 .axis_label(
                     charming::element::AxisLabel::new()
                         .rotate(45)
-                        .interval(18)
+                        .interval(9)
                         .color("#a0a0a0"),
                 )
                 .split_line(
