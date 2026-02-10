@@ -1,5 +1,6 @@
 use std::env::var;
 
+#[derive(Clone)]
 pub struct Config {
     pub discord_token: String,
     pub version: String,
