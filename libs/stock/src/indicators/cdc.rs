@@ -125,7 +125,12 @@ pub fn generate_chart(
                 .text(format!("{} | ${:.2}", symbol.to_uppercase(), last_price))
                 .left("center")
                 .top("2%")
-                .text_style(TextStyle::new().color("#ffffff").font_size(14)),
+                .text_style(
+                    TextStyle::new()
+                        .color("#ffffff")
+                        .font_size(14)
+                        .font_family("JetBrainsMono Nerd Font"),
+                ),
         )
         .x_axis(
             Axis::new()
@@ -135,7 +140,8 @@ pub fn generate_chart(
                     charming::element::AxisLabel::new()
                         .rotate(45)
                         .interval(9)
-                        .color("#a0a0a0"),
+                        .color("#a0a0a0")
+                        .font_family("JetBrainsMono Nerd Font"),
                 )
                 .split_line(
                     charming::element::SplitLine::new()
@@ -146,7 +152,11 @@ pub fn generate_chart(
             Axis::new()
                 .type_(AxisType::Value)
                 .scale(true)
-                .axis_label(charming::element::AxisLabel::new().color("#a0a0a0"))
+                .axis_label(
+                    charming::element::AxisLabel::new()
+                        .color("#a0a0a0")
+                        .font_family("JetBrainsMono Nerd Font"),
+                )
                 .split_line(
                     charming::element::SplitLine::new()
                         .line_style(charming::element::LineStyle::new().color("#2d2f45")),
