@@ -1,15 +1,12 @@
 use crate::{Context, Error};
+use log::{info, warn};
 
 #[poise::command(slash_command)]
 pub async fn watch(
     ctx: Context<'_>,
     #[description = "Ticker symbol(s), comma-separated (e.g., TSLA,MSFT)"] symbol: String,
 ) -> Result<(), Error> {
-    // Use try_defer instead of defer to avoid "Unknown interaction" error if already responded
-    if ctx.defer().await.is_err() {
-        // If defer fails, the interaction is likely expired or already responded to
-        return Ok(());
-    }
+    ctx.defer().await?;
 
     let store = &ctx.data().symbol_store;
 
@@ -19,7 +16,14 @@ pub async fn watch(
         .filter(|s| !s.is_empty())
         .collect();
 
+    info!(
+        "User {} requested to watch symbols: {:?}",
+        ctx.author().id,
+        symbols
+    );
+
     if symbols.is_empty() {
+        warn!("No valid symbols provided by user {}", ctx.author().id);
         ctx.say("No valid symbols provided.").await?;
         return Ok(());
     }
@@ -29,8 +33,18 @@ pub async fn watch(
 
     for sym in symbols {
         if store.add(&sym).await? {
+            info!(
+                "Added symbol '{}' to watchlist for user {}",
+                sym,
+                ctx.author().id
+            );
             added.push(sym);
         } else {
+            info!(
+                "Symbol '{}' was already being watched for user {}",
+                sym,
+                ctx.author().id
+            );
             already.push(sym);
         }
     }

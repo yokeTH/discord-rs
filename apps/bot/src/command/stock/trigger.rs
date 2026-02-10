@@ -1,7 +1,7 @@
 use std::mem::take;
 
 use chrono::Duration;
-use log::{debug, warn};
+use log::{debug, error, info, trace, warn};
 use serenity::all::{CreateAttachment, CreateEmbed};
 use serenity::futures::{StreamExt, stream};
 use stock::Timeframe;
@@ -16,12 +16,15 @@ struct Hit {
 
 #[poise::command(slash_command)]
 pub async fn trigger(ctx: Context<'_>) -> Result<(), Error> {
+    info!("Trigger command invoked by user: {:?}", ctx.author().name);
     ctx.defer().await?;
 
     let price_client = ctx.data().price_client.clone();
     let symbol_store = &ctx.data().symbol_store.clone();
 
+    info!("Fetching symbol list...");
     let symbols = symbol_store.list().await?;
+    info!("Fetched {} symbols.", symbols.len());
 
     let mut embeds: Vec<CreateEmbed> = Vec::new();
     let mut attachments: Vec<CreateAttachment> = Vec::new();
@@ -32,11 +35,13 @@ pub async fn trigger(ctx: Context<'_>) -> Result<(), Error> {
         .map(|symbol| {
             let price_client = price_client.clone();
             async move {
+                info!("Processing symbol: {}", symbol);
                 let bars = price_client
                     .fetch_price(symbol.as_str(), Duration::days(300), Timeframe::Day1, 365)
                     .await?;
 
                 if bars.is_empty() {
+                    warn!("No bars found for symbol: {}", symbol);
                     return Ok::<Option<Hit>, Error>(None);
                 }
 
@@ -51,6 +56,7 @@ pub async fn trigger(ctx: Context<'_>) -> Result<(), Error> {
 
                 match sig {
                     Signal::Buy | Signal::Sell => {
+                        info!("Signal {:?} detected for symbol: {}", sig, symbol);
                         let filename = format!("{}_chart.png", symbol);
                         let title = format!("{} Analysis", symbol.to_uppercase());
                         let desc = format!("Current Signal: {:?}", sig);
@@ -73,6 +79,7 @@ pub async fn trigger(ctx: Context<'_>) -> Result<(), Error> {
                         let ema26_c = ema26.clone();
                         let dates_c = dates.clone();
 
+                        trace!("Spawning blocking task to generate chart for {}", symbol_s);
                         let image_bytes = tokio::task::spawn_blocking(move || {
                             generate_chart(&symbol_s, &closes_c, &ema12_c, &ema26_c, &dates_c)
                         })
@@ -84,6 +91,7 @@ pub async fn trigger(ctx: Context<'_>) -> Result<(), Error> {
                     }
 
                     Signal::BullishZone | Signal::BearishZone | Signal::None => {
+                        debug!("No actionable signal for symbol: {}", symbol);
                         Ok::<Option<Hit>, Error>(None)
                     }
                 }
@@ -91,13 +99,20 @@ pub async fn trigger(ctx: Context<'_>) -> Result<(), Error> {
         })
         .buffer_unordered(CONCURRENCY);
 
+    let mut processed = 0;
     while let Some(res) = tasks.next().await {
+        processed += 1;
         match res {
             Ok(Some(hit)) => {
+                info!(
+                    "Adding embed and attachment for processed symbol #{}",
+                    processed
+                );
                 embeds.push(hit.embed);
                 attachments.push(hit.attachment);
 
                 if embeds.len() == 10 {
+                    info!("Sending batch of 10 embeds/attachments to Discord.");
                     ctx.send(poise::CreateReply {
                         embeds: take(&mut embeds),
                         attachments: take(&mut attachments),
@@ -106,14 +121,21 @@ pub async fn trigger(ctx: Context<'_>) -> Result<(), Error> {
                     .await?;
                 }
             }
-            Ok(None) => {}
+            Ok(None) => {
+                trace!("No hit for processed symbol #{}", processed);
+            }
             Err(e) => {
+                error!("symbol task failed: {:?}", e);
                 warn!("symbol task failed: {:?}", e);
             }
         }
     }
 
     if !embeds.is_empty() {
+        info!(
+            "Sending final batch of {} embeds/attachments to Discord.",
+            embeds.len()
+        );
         ctx.send(poise::CreateReply {
             embeds,
             attachments,
@@ -121,6 +143,7 @@ pub async fn trigger(ctx: Context<'_>) -> Result<(), Error> {
         })
         .await?;
     } else {
+        info!("No Buy/Sell signals found to send.");
         ctx.send(poise::CreateReply {
             content: Some("No Buy/Sell signals found.".to_string()),
             ..Default::default()
@@ -128,5 +151,6 @@ pub async fn trigger(ctx: Context<'_>) -> Result<(), Error> {
         .await?;
     }
 
+    info!("Trigger command completed.");
     Ok(())
 }

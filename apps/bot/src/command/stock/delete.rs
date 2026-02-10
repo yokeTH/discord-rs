@@ -2,6 +2,7 @@ use ::serenity::all::{
     CreateActionRow, CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption,
 };
 use anyhow::bail;
+use log::{debug, error, info, warn};
 use poise::serenity_prelude as serenity;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -19,6 +20,10 @@ pub async fn delete(ctx: Context<'_>) -> Result<(), Error> {
 
     let symbols: Vec<String> = symbol_store.list().await?;
     if symbols.is_empty() {
+        info!(
+            "User {} attempted to delete from an empty watchlist.",
+            ctx.author().id
+        );
         bail!("Watchlist is empty.");
     }
 
@@ -39,6 +44,12 @@ pub async fn delete(ctx: Context<'_>) -> Result<(), Error> {
     .max_values(limit as u8);
 
     let components = vec![CreateActionRow::SelectMenu(menu)];
+
+    info!(
+        "User {} invoked /delete. Presenting {} symbols for deletion.",
+        ctx.author().id,
+        limit
+    );
 
     ctx.send(
         poise::CreateReply::default()
@@ -64,6 +75,10 @@ pub async fn handle_component(
         };
 
         if values.is_empty() {
+            debug!(
+                "User {} submitted an empty selection for deletion.",
+                interaction.user.id
+            );
             return Ok(());
         }
 
@@ -78,6 +93,12 @@ pub async fn handle_component(
             .symbol_store
             .set_pending_delete(req_id.to_string(), values.clone())
             .await?;
+
+        info!(
+            "User {} initiated delete confirmation for symbols: [{}]",
+            user_id,
+            values.join(", ")
+        );
 
         let msg = format!(
             "Are you sure you want to delete **{}** symbols?\n> {}",
@@ -109,6 +130,10 @@ pub async fn handle_component(
     }
 
     if id == CANCEL_ID {
+        info!(
+            "User {} cancelled the delete operation.",
+            interaction.user.id
+        );
         interaction
             .create_response(
                 ctx,
@@ -127,6 +152,10 @@ pub async fn handle_component(
         if let Some(owner) = req_id.split('-').next()
             && owner != interaction.user.id.get().to_string()
         {
+            warn!(
+                "User {} attempted to confirm deletion for someone else's request (owner: {}).",
+                interaction.user.id, owner
+            );
             interaction
                 .create_response(
                     ctx,
@@ -147,6 +176,10 @@ pub async fn handle_component(
         {
             Some(s) => s,
             None => {
+                warn!(
+                    "User {} tried to confirm deletion, but session expired or not found (req_id: {}).",
+                    interaction.user.id, req_id
+                );
                 interaction
                     .create_response(
                         ctx,
@@ -162,8 +195,20 @@ pub async fn handle_component(
         };
 
         for sym in &symbols {
-            let _ = data.symbol_store.remove(sym).await;
+            match data.symbol_store.remove(sym).await {
+                Ok(_) => info!("User {} deleted symbol '{}'.", interaction.user.id, sym),
+                Err(e) => error!(
+                    "Error deleting symbol '{}' for user {}: {:?}",
+                    sym, interaction.user.id, e
+                ),
+            }
         }
+
+        info!(
+            "User {} confirmed deletion of symbols: [{}]",
+            interaction.user.id,
+            symbols.join(", ")
+        );
 
         interaction
             .create_response(
