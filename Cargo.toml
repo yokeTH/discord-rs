@@ -5,6 +5,7 @@ members = ["apps/bot", "libs/stock"]
 [workspace.dependencies]
 anyhow = "1"
 chrono = "0.4"
+chrono-tz = "0.10"
 log = "0.4"
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }

@@ -1,5 +1,6 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
+use anyhow::Result;
 use bot::{
     Data,
     command::{self, stock::stock_command},
@@ -11,7 +12,7 @@ use serenity::all::{ActivityData, ClientBuilder, FullEvent, GatewayIntents, Inte
 use stock::{PriceClient, SymbolStore};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     env_logger::init();
 
@@ -50,9 +51,31 @@ async fn main() {
                     ready.user.name, ready.user.id
                 );
 
-                ctx.set_activity(Some(ActivityData::custom(config.version.to_string())));
-
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+
+                let ctx_clone = ctx.clone();
+                tokio::spawn(async move {
+                    let mut show_version = true;
+                    let mut tick = tokio::time::interval(Duration::from_secs(30));
+
+                    loop {
+                        tick.tick().await;
+
+                        let text = if show_version {
+                            if config.version.starts_with('v') {
+                                config.version.clone()
+                            } else {
+                                format!("Version - {}", config.version)
+                            }
+                        } else {
+                            let now = chrono::Local::now();
+                            format!("Time - {}", now.format("%H:%M (%:z)"))
+                        };
+
+                        ctx_clone.set_activity(Some(ActivityData::custom(text)));
+                        show_version = !show_version;
+                    }
+                });
 
                 Ok(Data {
                     symbol_store: Arc::new(symbol_store),
@@ -76,6 +99,8 @@ async fn main() {
     shutdown_signal().await;
 
     info!("Shutdown complete.");
+
+    Ok(())
 }
 
 async fn shutdown_signal() {
