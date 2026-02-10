@@ -26,7 +26,7 @@ async fn main() {
                     ready.user.name, ready.user.id
                 );
 
-                ctx.set_activity(Some(ActivityData::custom(format!("V. {}", config.version))));
+                ctx.set_activity(Some(ActivityData::custom(format!("{}", config.version))));
 
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
 

@@ -1,0 +1,16 @@
+[package]
+name = "stock"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+charming = { version = "0.6", features = ["ssr", "ssr-raster"] }
+fred = { version = "10.1.0", features = ["enable-native-tls"] }
+log = { workspace = true }
+ta = "0.5"
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
