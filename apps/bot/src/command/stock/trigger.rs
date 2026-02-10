@@ -4,6 +4,7 @@ use chrono::Duration;
 use log::{debug, warn};
 use serenity::all::{CreateAttachment, CreateEmbed};
 use serenity::futures::{StreamExt, stream};
+use stock::Timeframe;
 use stock::indicators::cdc::{Signal, calculate, generate_chart};
 
 use crate::{Context, Error};
@@ -32,12 +33,7 @@ pub async fn trigger(ctx: Context<'_>) -> Result<(), Error> {
             let price_client = price_client.clone();
             async move {
                 let bars = price_client
-                    .fetch_price(
-                        symbol.as_str(),
-                        Duration::days(300),
-                        stock::Timeframe::Day1,
-                        365,
-                    )
+                    .fetch_price(symbol.as_str(), Duration::days(300), Timeframe::Day1, 365)
                     .await?;
 
                 if bars.is_empty() {

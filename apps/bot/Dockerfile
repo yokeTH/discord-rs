@@ -15,13 +15,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY rust-toolchain.toml ./
 COPY Cargo.toml Cargo.lock ./
 COPY apps/bot/Cargo.toml apps/bot/Cargo.toml
+COPY libs/stock/Cargo.toml libs/stock/Cargo.toml
 
 RUN mkdir -p apps/bot/src libs/stock/src \
-    && printf "fn main(){}" > apps/bot/src/main.rs
+    && printf "fn main(){}" > apps/bot/src/main.rs \
+    && printf "fn _stock(){}" > libs/stock/src/lib.rs
 
 RUN cargo build -p bot --release
 
 COPY apps/bot apps/bot
+COPY . .
 
 RUN cargo build -p bot --release
 
