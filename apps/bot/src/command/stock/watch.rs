@@ -7,8 +7,15 @@ pub async fn watch(
 ) -> Result<(), Error> {
     ctx.defer().await?;
 
-    ctx.say(format!("Unimplemented -> Symbol {}", symbol))
-        .await?;
+    let store = &ctx.data().symbol_store;
+
+    if store.add(&symbol).await? {
+        ctx.say(format!("Now watching: {}", symbol.to_uppercase()))
+            .await?;
+    } else {
+        ctx.say(format!("Already watching: {}", symbol.to_uppercase()))
+            .await?;
+    }
 
     Ok(())
 }
