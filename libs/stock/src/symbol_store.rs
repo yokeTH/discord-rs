@@ -38,6 +38,19 @@ impl SymbolStore {
         })
     }
 
+    /// Create a new SymbolStore from environment variables.
+    /// Expects REDIS_URL and REDIS_KEY_PREFIX to be set.
+    pub async fn from_env() -> Result<Self, Error> {
+        use std::env;
+
+        let redis_url = env::var("REDIS_URL")
+            .map_err(|_| Error::msg("REDIS_URL environment variable not set"))?;
+        let key_prefix = env::var("REDIS_KEY_PREFIX")
+            .map_err(|_| Error::msg("REDIS_KEY_PREFIX environment variable not set"))?;
+
+        Self::new(&redis_url, key_prefix).await
+    }
+
     fn normalize(symbol: &str) -> String {
         symbol.trim().to_uppercase()
     }

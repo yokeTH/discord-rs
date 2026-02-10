@@ -1,7 +1,14 @@
-use bot::{Data, command::stock::stock_command, config::Config};
+use std::sync::Arc;
+
+use bot::{
+    Data,
+    command::{self, stock::stock_command},
+    config::Config,
+};
 use log::info;
 use poise::{Framework, FrameworkOptions};
-use serenity::all::{ActivityData, ClientBuilder, GatewayIntents};
+use serenity::all::{ActivityData, ClientBuilder, FullEvent, GatewayIntents, Interaction};
+use stock::{PriceClient, SymbolStore};
 
 #[tokio::main]
 async fn main() {
@@ -10,12 +17,29 @@ async fn main() {
 
     let config = Config::from_env();
 
+    let symbol_store = SymbolStore::from_env()
+        .await
+        .expect("init price client failed");
+
+    let price_client = PriceClient::from_env().expect("init price client failed");
+
     let intents = GatewayIntents::non_privileged();
 
     let commands = vec![stock_command()];
 
     let framework = Framework::builder()
         .options(FrameworkOptions {
+            event_handler: |serenity_ctx, event, _framework_ctx, data| {
+                Box::pin(async move {
+                    if let FullEvent::InteractionCreate { interaction, .. } = event {
+                        if let Interaction::Component(component) = interaction {
+                            let _ = command::stock::handle_component(serenity_ctx, data, component)
+                                .await;
+                        }
+                    }
+                    Ok(())
+                })
+            },
             commands,
             ..Default::default()
         })
@@ -30,7 +54,10 @@ async fn main() {
 
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
 
-                Ok(Data {})
+                Ok(Data {
+                    symbol_store: Arc::new(symbol_store),
+                    price_client: Arc::new(price_client),
+                })
             })
         })
         .build();

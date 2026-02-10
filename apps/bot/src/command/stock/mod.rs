@@ -9,6 +9,8 @@ use graph::graph;
 use trigger::trigger;
 use watch::watch;
 
+pub use delete::handle_component;
+
 #[poise::command(
     slash_command,
     rename = "stock",

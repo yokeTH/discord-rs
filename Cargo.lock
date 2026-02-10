@@ -340,6 +340,7 @@ dependencies = [
  "log",
  "poise",
  "serenity",
+ "stock",
  "tokio",
 ]
 

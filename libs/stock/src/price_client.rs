@@ -13,7 +13,7 @@ pub struct PriceClient {
 }
 
 impl PriceClient {
-    pub async fn new(base_api: String, key_id: String, secret: String) -> Result<Self> {
+    pub fn new(base_api: String, key_id: String, secret: String) -> Result<Self> {
         let mut headers = HeaderMap::new();
         headers.insert("APCA-API-KEY-ID", HeaderValue::from_str(&key_id)?);
         headers.insert("APCA-API-SECRET-KEY", HeaderValue::from_str(&secret)?);
@@ -25,11 +25,13 @@ impl PriceClient {
         Ok(Self { client, base_api })
     }
 
-    pub async fn from_env() -> Result<Self> {
+    /// Create a new SymbolStore from environment variables.
+    /// Expects APCA_API_BASE_URL, APCA_API_KEY_ID and APCA_API_SECRET_KEY to be set.
+    pub fn from_env() -> Result<Self> {
         let base_api = std::env::var("APCA_API_BASE_URL")?;
         let key_id = std::env::var("APCA_API_KEY_ID")?;
         let secret = std::env::var("APCA_API_SECRET_KEY")?;
-        Self::new(base_api, key_id, secret).await
+        Self::new(base_api, key_id, secret)
     }
 
     pub async fn fetch_price(
