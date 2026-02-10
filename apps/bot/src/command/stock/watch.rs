@@ -3,17 +3,44 @@ use crate::{Context, Error};
 #[poise::command(slash_command)]
 pub async fn watch(
     ctx: Context<'_>,
-    #[description = "Ticker symbol (e.g., TSLA)"] symbol: String,
+    #[description = "Ticker symbol(s), comma-separated (e.g., TSLA,MSFT)"] symbol: String,
 ) -> Result<(), Error> {
-    ctx.defer().await?;
+    // Use try_defer instead of defer to avoid "Unknown interaction" error if already responded
+    if ctx.defer().await.is_err() {
+        // If defer fails, the interaction is likely expired or already responded to
+        return Ok(());
+    }
 
     let store = &ctx.data().symbol_store;
 
-    if store.add(&symbol).await? {
-        ctx.say(format!("Now watching: {}", symbol.to_uppercase()))
+    let symbols: Vec<String> = symbol
+        .split(',')
+        .map(|s| s.trim().to_uppercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    if symbols.is_empty() {
+        ctx.say("No valid symbols provided.").await?;
+        return Ok(());
+    }
+
+    let mut added = Vec::new();
+    let mut already = Vec::new();
+
+    for sym in symbols {
+        if store.add(&sym).await? {
+            added.push(sym);
+        } else {
+            already.push(sym);
+        }
+    }
+
+    if !added.is_empty() {
+        ctx.say(format!("Now watching: {}", added.join(", ")))
             .await?;
-    } else {
-        ctx.say(format!("Already watching: {}", symbol.to_uppercase()))
+    }
+    if !already.is_empty() {
+        ctx.say(format!("Already watching: {}", already.join(", ")))
             .await?;
     }
 
