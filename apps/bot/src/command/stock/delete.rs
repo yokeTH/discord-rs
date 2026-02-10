@@ -124,20 +124,20 @@ pub async fn handle_component(
     }
 
     if let Some(req_id) = id.strip_prefix(CONFIRM_PREFIX) {
-        if let Some(owner) = req_id.split('-').next() {
-            if owner != interaction.user.id.get().to_string() {
-                interaction
-                    .create_response(
-                        ctx,
-                        serenity::CreateInteractionResponse::Message(
-                            serenity::CreateInteractionResponseMessage::new()
-                                .content("❌ You can’t confirm someone else’s delete.")
-                                .ephemeral(true),
-                        ),
-                    )
-                    .await?;
-                return Ok(());
-            }
+        if let Some(owner) = req_id.split('-').next()
+            && owner != interaction.user.id.get().to_string()
+        {
+            interaction
+                .create_response(
+                    ctx,
+                    serenity::CreateInteractionResponse::Message(
+                        serenity::CreateInteractionResponseMessage::new()
+                            .content("❌ You can’t confirm someone else’s delete.")
+                            .ephemeral(true),
+                    ),
+                )
+                .await?;
+            return Ok(());
         }
 
         let symbols: Vec<String> = match data

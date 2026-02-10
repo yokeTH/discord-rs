@@ -31,11 +31,11 @@ async fn main() {
         .options(FrameworkOptions {
             event_handler: |serenity_ctx, event, _framework_ctx, data| {
                 Box::pin(async move {
-                    if let FullEvent::InteractionCreate { interaction, .. } = event {
-                        if let Interaction::Component(component) = interaction {
-                            let _ = command::stock::handle_component(serenity_ctx, data, component)
-                                .await;
-                        }
+                    if let FullEvent::InteractionCreate { interaction, .. } = event
+                        && let Interaction::Component(component) = interaction
+                    {
+                        let _ =
+                            command::stock::handle_component(serenity_ctx, data, component).await;
                     }
                     Ok(())
                 })
@@ -50,7 +50,7 @@ async fn main() {
                     ready.user.name, ready.user.id
                 );
 
-                ctx.set_activity(Some(ActivityData::custom(format!("{}", config.version))));
+                ctx.set_activity(Some(ActivityData::custom(config.version.to_string())));
 
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
 

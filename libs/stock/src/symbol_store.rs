@@ -90,13 +90,18 @@ impl SymbolStore {
         self.client
             .smembers(self.watchlist_key())
             .await
-            .map_err(|e| Error::from(e))
+            .map_err(Error::from)
     }
 
     /// Total number of tracked symbols
     pub async fn len(&self) -> Result<usize, Error> {
         let count: i64 = self.client.scard(self.watchlist_key()).await?;
         Ok(count as usize)
+    }
+
+    /// Returns true if there are no tracked symbols
+    pub async fn is_empty(&self) -> Result<bool, Error> {
+        Ok(self.len().await? == 0)
     }
 
     /// Set Pending Delete
