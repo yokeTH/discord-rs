@@ -1,12 +1,15 @@
 use crate::{Context, Error};
-use log::{info, warn};
+
+use tracing::{debug, info, instrument, warn};
 
 #[poise::command(slash_command)]
+#[instrument(name = "cmd_watch", skip(ctx), fields(user_id = %ctx.author().id, raw = %symbol))]
 pub async fn watch(
     ctx: Context<'_>,
     #[description = "Ticker symbol(s), comma-separated (e.g., TSLA,MSFT)"] symbol: String,
 ) -> Result<(), Error> {
     ctx.defer().await?;
+    debug!("deferred reply");
 
     let store = &ctx.data().symbol_store;
 
@@ -16,14 +19,10 @@ pub async fn watch(
         .filter(|s| !s.is_empty())
         .collect();
 
-    info!(
-        "User {} requested to watch symbols: {:?}",
-        ctx.author().id,
-        symbols
-    );
+    info!(count = symbols.len(), symbols = %symbols.join(", "), "parsed symbols");
 
     if symbols.is_empty() {
-        warn!("No valid symbols provided by user {}", ctx.author().id);
+        warn!("no valid symbols provided");
         ctx.say("No valid symbols provided.").await?;
         return Ok(());
     }
@@ -32,20 +31,15 @@ pub async fn watch(
     let mut already = Vec::new();
 
     for sym in symbols {
-        if store.add(&sym).await? {
-            info!(
-                "Added symbol '{}' to watchlist for user {}",
-                sym,
-                ctx.author().id
-            );
-            added.push(sym);
-        } else {
-            info!(
-                "Symbol '{}' was already being watched for user {}",
-                sym,
-                ctx.author().id
-            );
-            already.push(sym);
+        match store.add(&sym).await? {
+            true => {
+                info!(symbol = %sym, "added symbol to watchlist");
+                added.push(sym);
+            }
+            false => {
+                debug!(symbol = %sym, "symbol already watched");
+                already.push(sym);
+            }
         }
     }
 
@@ -57,6 +51,12 @@ pub async fn watch(
         ctx.say(format!("Already watching: {}", already.join(", ")))
             .await?;
     }
+
+    info!(
+        added = added.len(),
+        already = already.len(),
+        "completed watch request"
+    );
 
     Ok(())
 }

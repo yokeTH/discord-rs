@@ -5,6 +5,7 @@ use reqwest::{
     header::{HeaderMap, HeaderValue},
 };
 use serde::Deserialize;
+use tracing::{debug, info, instrument};
 
 #[derive(Clone)]
 pub struct PriceClient {
@@ -13,6 +14,7 @@ pub struct PriceClient {
 }
 
 impl PriceClient {
+    #[instrument(name = "price_client_new", skip(key_id, secret), fields(base_api = %base_api))]
     pub fn new(base_api: String, key_id: String, secret: String) -> Result<Self> {
         let mut headers = HeaderMap::new();
         headers.insert("APCA-API-KEY-ID", HeaderValue::from_str(&key_id)?);
@@ -22,18 +24,32 @@ impl PriceClient {
             .default_headers(headers)
             .build()?;
 
+        info!("price client initialized");
         Ok(Self { client, base_api })
     }
 
-    /// Create a new SymbolStore from environment variables.
+    /// Create a new PriceClient from environment variables.
     /// Expects APCA_API_BASE_URL, APCA_API_KEY_ID and APCA_API_SECRET_KEY to be set.
+    #[instrument(name = "price_client_from_env", skip_all)]
     pub fn from_env() -> Result<Self> {
         let base_api = std::env::var("APCA_API_BASE_URL")?;
         let key_id = std::env::var("APCA_API_KEY_ID")?;
         let secret = std::env::var("APCA_API_SECRET_KEY")?;
+
+        debug!(base_api = %base_api, "loaded alpaca env vars");
         Self::new(base_api, key_id, secret)
     }
 
+    #[instrument(
+        name = "fetch_price",
+        skip(self),
+        fields(
+            symbol = %symbol,
+            timeframe = %timeframe.as_str(),
+            limit = limit,
+            duration_days = duration.num_days()
+        )
+    )]
     pub async fn fetch_price(
         &self,
         symbol: &str,
@@ -49,6 +65,8 @@ impl PriceClient {
             self.base_api.trim_end_matches('/'),
             symbol
         );
+
+        debug!(%url, start = %start.to_rfc3339(), end = %end.to_rfc3339(), "requesting bars");
 
         let res: BarsResponse = self
             .client
@@ -66,6 +84,7 @@ impl PriceClient {
             .json()
             .await?;
 
+        info!(bars = res.bars.len(), "fetched bars");
         Ok(res.bars)
     }
 }

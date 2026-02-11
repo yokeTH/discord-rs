@@ -2,9 +2,9 @@ use ::serenity::all::{
     CreateActionRow, CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption,
 };
 use anyhow::bail;
-use log::{debug, error, info, warn};
 use poise::serenity_prelude as serenity;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::{debug, error, info, instrument, warn};
 
 use crate::{Context, Data, Error};
 
@@ -13,17 +13,16 @@ const CONFIRM_PREFIX: &str = "confirm_del_";
 const CANCEL_ID: &str = "cancel_del";
 
 #[poise::command(slash_command)]
+#[instrument(name = "cmd_delete", skip(ctx), fields(user_id = %ctx.author().id))]
 pub async fn delete(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer().await?;
+    debug!("deferred reply");
 
     let symbol_store = ctx.data().symbol_store.clone();
 
     let symbols: Vec<String> = symbol_store.list().await?;
     if symbols.is_empty() {
-        info!(
-            "User {} attempted to delete from an empty watchlist.",
-            ctx.author().id
-        );
+        info!("attempted delete from empty watchlist");
         bail!("Watchlist is empty.");
     }
 
@@ -45,11 +44,7 @@ pub async fn delete(ctx: Context<'_>) -> Result<(), Error> {
 
     let components = vec![CreateActionRow::SelectMenu(menu)];
 
-    info!(
-        "User {} invoked /delete. Presenting {} symbols for deletion.",
-        ctx.author().id,
-        limit
-    );
+    info!(limit, "presenting symbols for deletion");
 
     ctx.send(
         poise::CreateReply::default()
@@ -58,9 +53,15 @@ pub async fn delete(ctx: Context<'_>) -> Result<(), Error> {
     )
     .await?;
 
+    info!("sent selection menu");
     Ok(())
 }
 
+#[instrument(
+    name = "component_delete",
+    skip(ctx, data, interaction),
+    fields(custom_id = %interaction.data.custom_id, user_id = %interaction.user.id)
+)]
 pub async fn handle_component(
     ctx: &serenity::Context,
     data: &Data,
@@ -75,10 +76,7 @@ pub async fn handle_component(
         };
 
         if values.is_empty() {
-            debug!(
-                "User {} submitted an empty selection for deletion.",
-                interaction.user.id
-            );
+            debug!("empty selection submitted");
             return Ok(());
         }
 
@@ -89,15 +87,15 @@ pub async fn handle_component(
             .as_secs();
         let req_id = format!("{user_id}-{ts}");
 
-        let _ = data
-            .symbol_store
-            .set_pending_delete(req_id.to_string(), values.clone())
+        data.symbol_store
+            .set_pending_delete(req_id.clone(), values.clone())
             .await?;
 
         info!(
-            "User {} initiated delete confirmation for symbols: [{}]",
-            user_id,
-            values.join(", ")
+            req_id = %req_id,
+            count = values.len(),
+            symbols = %values.join(", "),
+            "initiated delete confirmation"
         );
 
         let msg = format!(
@@ -126,14 +124,13 @@ pub async fn handle_component(
             )
             .await?;
 
+        debug!(req_id = %req_id, "updated message to confirmation UI");
         return Ok(());
     }
 
     if id == CANCEL_ID {
-        info!(
-            "User {} cancelled the delete operation.",
-            interaction.user.id
-        );
+        info!("cancelled delete operation");
+
         interaction
             .create_response(
                 ctx,
@@ -152,10 +149,8 @@ pub async fn handle_component(
         if let Some(owner) = req_id.split('-').next()
             && owner != interaction.user.id.get().to_string()
         {
-            warn!(
-                "User {} attempted to confirm deletion for someone else's request (owner: {}).",
-                interaction.user.id, owner
-            );
+            warn!(owner = %owner, req_id = %req_id, "attempted to confirm request");
+
             interaction
                 .create_response(
                     ctx,
@@ -176,10 +171,8 @@ pub async fn handle_component(
         {
             Some(s) => s,
             None => {
-                warn!(
-                    "User {} tried to confirm deletion, but session expired or not found (req_id: {}).",
-                    interaction.user.id, req_id
-                );
+                warn!(req_id = %req_id, "session expired or not found");
+
                 interaction
                     .create_response(
                         ctx,
@@ -194,21 +187,20 @@ pub async fn handle_component(
             }
         };
 
+        info!(
+            req_id = %req_id,
+            count = symbols.len(),
+            symbols = %symbols.join(", "),
+            "confirmed deletion"
+        );
+
+        // delete each symbol
         for sym in &symbols {
             match data.symbol_store.remove(sym).await {
-                Ok(_) => info!("User {} deleted symbol '{}'.", interaction.user.id, sym),
-                Err(e) => error!(
-                    "Error deleting symbol '{}' for user {}: {:?}",
-                    sym, interaction.user.id, e
-                ),
+                Ok(_) => info!(symbol = %sym, "deleted symbol"),
+                Err(e) => error!(symbol = %sym, error = ?e, "failed to delete symbol"),
             }
         }
-
-        info!(
-            "User {} confirmed deletion of symbols: [{}]",
-            interaction.user.id,
-            symbols.join(", ")
-        );
 
         interaction
             .create_response(
@@ -221,8 +213,10 @@ pub async fn handle_component(
             )
             .await?;
 
+        debug!("updated message to final result");
         return Ok(());
     }
 
+    debug!("ignored unrelated component interaction");
     Ok(())
 }

@@ -1,22 +1,25 @@
 use chrono::Duration;
-use log::{debug, error, info, trace, warn};
 use poise::CreateReply;
 use serenity::all::{CreateAttachment, CreateEmbed};
 use stock::indicators::cdc::{Signal, calculate, generate_chart};
+use tracing::{debug, error, info, instrument};
 
 use crate::{Context, Error};
 
 #[poise::command(slash_command)]
+#[instrument(name = "cmd_graph", skip(ctx), fields(symbol = %symbol))]
 pub async fn graph(
     ctx: Context<'_>,
     #[description = "Symbol of stock to generate"] symbol: String,
 ) -> Result<(), Error> {
-    info!("Received graph command for symbol: {}", symbol);
+    info!("starting");
+
     ctx.defer().await?;
+    debug!("deferred reply");
 
     let price_client = &ctx.data().price_client;
 
-    info!("Fetching price data for symbol: {}", symbol);
+    debug!("fetching price bars");
     let bars = match price_client
         .fetch_price(
             symbol.as_str(),
@@ -27,30 +30,38 @@ pub async fn graph(
         .await
     {
         Ok(b) => {
-            info!("Fetched {} bars for {}", b.len(), symbol);
+            info!(bars = b.len(), "fetched price bars");
             b
         }
         Err(e) => {
-            error!("Failed to fetch price data for {}: {:?}", symbol, e);
+            error!(error = ?e, "fetch_price failed");
             return Err(e.into());
         }
     };
+
     let closes: Vec<f64> = bars.iter().map(|b| b.close).collect();
     let dates: Vec<String> = bars
         .iter()
         .map(|b| b.timestamp.format("%Y-%m-%d").to_string())
         .collect();
 
-    debug!("Calculating CDC indicators for {}", symbol);
+    debug!(
+        closes = closes.len(),
+        dates = dates.len(),
+        "prepared series"
+    );
+
     let (sig, ema12, ema26) = calculate(&closes);
+    info!(signal = ?sig, "calculated indicators");
 
-    info!("{} - Signal: {:?}", symbol, sig);
-
-    debug!("Generating chart for {}", symbol);
+    debug!("generating chart");
     let image_bytes = match generate_chart(symbol.as_str(), &closes, &ema12, &ema26, &dates) {
-        Ok(bytes) => bytes,
+        Ok(bytes) => {
+            info!(bytes = bytes.len(), "chart generated");
+            bytes
+        }
         Err(e) => {
-            error!("Failed to generate chart for {}: {:?}", symbol, e);
+            error!(error = ?e, "generate_chart failed");
             return Err(e.into());
         }
     };
@@ -69,9 +80,10 @@ pub async fn graph(
         Signal::None => embed.color(0xffffff),
     };
 
-    info!("Sending embed for symbol: {}", symbol);
+    debug!("sending response");
     ctx.send(CreateReply::default().embed(embed).attachment(attachment))
         .await?;
+    info!("sent response");
 
     Ok(())
 }

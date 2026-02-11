@@ -6,7 +6,9 @@ members = ["apps/bot", "libs/stock"]
 anyhow = "1"
 chrono = "0.4"
 chrono-tz = "0.10"
-log = "0.4"
+tracing = "0.1"
+tracing-futures = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
 serde = { version = "1", features = ["derive"] }

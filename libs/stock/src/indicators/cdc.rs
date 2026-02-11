@@ -7,6 +7,7 @@ use charming::{
 };
 use ta::Next;
 use ta::indicators::ExponentialMovingAverage;
+use tracing::{debug, info, instrument};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Signal {
@@ -17,6 +18,7 @@ pub enum Signal {
     None,
 }
 
+#[instrument(name = "cdc_calculate", skip(closes), fields(n = closes.len()))]
 pub fn calculate(closes: &[f64]) -> (Signal, Vec<f64>, Vec<f64>) {
     let mut ema12 = ExponentialMovingAverage::new(12).unwrap();
     let mut ema26 = ExponentialMovingAverage::new(26).unwrap();
@@ -30,6 +32,7 @@ pub fn calculate(closes: &[f64]) -> (Signal, Vec<f64>, Vec<f64>) {
     }
 
     if closes.len() < 2 {
+        debug!("not enough data for signal");
         return (Signal::None, ema12_vals, ema26_vals);
     }
 
@@ -51,9 +54,21 @@ pub fn calculate(closes: &[f64]) -> (Signal, Vec<f64>, Vec<f64>) {
         Signal::BearishZone
     };
 
+    info!(signal = ?signal, "signal computed");
     (signal, ema12_vals, ema26_vals)
 }
 
+#[instrument(
+    name = "cdc_generate_chart",
+    skip(prices, ema12, ema26, dates),
+    fields(
+        symbol = %symbol,
+        prices = prices.len(),
+        ema12 = ema12.len(),
+        ema26 = ema26.len(),
+        dates = dates.len()
+    )
+)]
 pub fn generate_chart(
     symbol: &str,
     prices: &[f64],
@@ -87,6 +102,8 @@ pub fn generate_chart(
     if n == 0 {
         bail!("no data to display after slicing");
     }
+
+    debug!(lookback = n, start_idx, "prepared display window");
 
     let mut price_green = vec![f64::NAN; n];
     let mut price_red = vec![f64::NAN; n];
@@ -193,5 +210,7 @@ pub fn generate_chart(
 
     let mut renderer = ImageRenderer::new(WIDTH, HEIGHT);
     let png_bytes = renderer.render_format(ImageFormat::Png, &chart)?;
+
+    info!(bytes = png_bytes.len(), "chart rendered");
     Ok(png_bytes)
 }
