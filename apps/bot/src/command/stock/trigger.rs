@@ -1,10 +1,12 @@
 use std::mem::take;
+use std::time::Duration as StdDuration;
 
 use chrono::Duration;
 use serenity::all::{CreateAttachment, CreateEmbed};
 use serenity::futures::{StreamExt, stream};
 use stock::Timeframe;
 use stock::indicators::cdc::{Signal, calculate, generate_chart};
+use tokio::time::timeout;
 
 use crate::{Context, Error};
 
@@ -25,7 +27,10 @@ pub async fn trigger(ctx: Context<'_>) -> Result<(), Error> {
     let price_client = ctx.data().price_client.clone();
     let symbol_store = ctx.data().symbol_store.clone();
 
-    let symbols = symbol_store.list().await?;
+    let symbols = timeout(StdDuration::from_secs(2), symbol_store.list())
+        .await
+        .map_err(|_| Error::msg("redis list() timed out"))??;
+
     info!(total_symbols = symbols.len(), "loaded symbols");
 
     let mut embeds: Vec<CreateEmbed> = Vec::new();

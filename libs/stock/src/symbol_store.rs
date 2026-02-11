@@ -33,8 +33,7 @@ impl SymbolStore {
         });
 
         info!("connecting to redis");
-        client.connect();
-        client.wait_for_connect().await?;
+        client.init().await?;
         info!("redis connected");
 
         Ok(Self { client, key_prefix })
