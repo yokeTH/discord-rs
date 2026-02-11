@@ -32,15 +32,23 @@ RUN cargo chef prepare --recipe-path recipe.json
 # Cacher
 #
 FROM chef AS cacher
+
+ARG CACHE_ID=default
+
 COPY --from=planner /app/recipe.json /app/recipe.json
 
-RUN cargo chef cook --release --recipe-path recipe.json
+RUN --mount=type=cache,id=${CACHE_ID}-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=${CACHE_ID}-cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=${CACHE_ID}-cargo-target,target=/app/target \
+    cargo chef cook --release --recipe-path recipe.json
 
 #
 # Builder
 #
 FROM chef AS builder
 WORKDIR /app
+
+ARG CACHE_ID=default
 
 ENV FONT_VERSION=3.2.1
 ENV FONT_DIR=/usr/share/fonts/JetBrainsMono
@@ -53,9 +61,12 @@ RUN mkdir -p "${FONT_DIR}" \
     && fc-cache -fv
 
 COPY . .
-RUN cargo build -p bot --release
 
-RUN mkdir -p \
+RUN --mount=type=cache,id=${CACHE_ID}-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=${CACHE_ID}-cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=${CACHE_ID}-cargo-target,target=/app/target \
+    cargo build -p bot --release \
+    && mkdir -p \
     /out/lib \
     /out/etc/ssl/certs \
     /out/usr/share/fonts \
@@ -67,8 +78,7 @@ RUN mkdir -p \
     && cp /usr/lib/*/libcrypto.so.3 /out/lib/ \
     && cp -r /usr/share/fonts/* /out/usr/share/fonts/ \
     && cp -r /etc/fonts/* /out/etc/fonts/ \
-    && (cp -r /var/cache/fontconfig/* /out/var/cache/fontconfig/ || true) \
-    && (ldd /app/target/release/bot || true)
+    && (cp -r /var/cache/fontconfig/* /out/var/cache/fontconfig/ || true)
 
 #
 # Runner

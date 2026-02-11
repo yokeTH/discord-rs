@@ -87,6 +87,7 @@ jobs:
           build-args: |
             APP_NAME=${{ matrix.app }}
             APP_VERSION=${{ github.ref_type == 'tag' && github.ref_name || steps.vars.outputs.short_sha }}
+            CACHE_ID=${{ matrix.app }}-${{ matrix.arch }}
 
           outputs: type=image,name=ghcr.io/${{ env.REPO_NAME }}/${{ matrix.app }},push-by-digest=true,name-canonical=true
 
