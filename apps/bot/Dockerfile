@@ -1,3 +1,6 @@
+#
+# Builder
+#
 FROM --platform=$BUILDPLATFORM rust:bookworm AS builder
 WORKDIR /app
 
@@ -12,10 +15,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     clang \
     fontconfig \
     fonts-jetbrains-mono \
+    unzip \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
-COPY . .
+ENV FONT_VERSION=3.2.1
+ENV FONT_DIR=/usr/share/fonts/JetBrainsMono
 
+RUN mkdir -p "${FONT_DIR}" \
+    && wget -O /tmp/JetBrainsMono.zip \
+    "https://github.com/ryanoasis/nerd-fonts/releases/download/v${FONT_VERSION}/JetBrainsMono.zip" \
+    && unzip -q /tmp/JetBrainsMono.zip -d "${FONT_DIR}" \
+    && rm -f /tmp/JetBrainsMono.zip \
+    && fc-cache -fv
+
+COPY . .
 RUN cargo build -p bot --release
 
 RUN mkdir -p \
@@ -33,22 +47,31 @@ RUN mkdir -p \
     && (cp -r /var/cache/fontconfig/* /out/var/cache/fontconfig/ || true) \
     && (ldd /app/target/release/bot || true)
 
+
+#
+# Runner
+#
 FROM gcr.io/distroless/cc-debian12
+
 ARG APP_VERSION
 ENV APP_VERSION=$APP_VERSION
 
+# SSL certs
 COPY --from=builder /out/etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
+# OpenSSL libs
 COPY --from=builder /out/lib/libssl.so.3 /usr/lib/libssl.so.3
 COPY --from=builder /out/lib/libcrypto.so.3 /usr/lib/libcrypto.so.3
 
+# Fonts + fontconfig
 COPY --from=builder /out/usr/share/fonts /usr/share/fonts
 COPY --from=builder /out/etc/fonts /etc/fonts
 COPY --from=builder /out/var/cache/fontconfig /var/cache/fontconfig
 ENV FONTCONFIG_PATH=/etc/fonts
 ENV FONTCONFIG_FILE=/etc/fonts/fonts.conf
 
+# App
 COPY --from=builder /out/bot /bot
 
 USER 65532:65532
