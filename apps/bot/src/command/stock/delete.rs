@@ -17,13 +17,13 @@ pub async fn delete(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer().await?;
 
     let symbol_store = ctx.data().symbol_store.clone();
-    let user_id = ctx.author().id.get();
-
-    info!("delete: invoked user_id={}", user_id);
 
     let symbols: Vec<String> = symbol_store.list().await?;
     if symbols.is_empty() {
-        info!("delete: watchlist empty user_id={}", user_id);
+        info!(
+            "User {} attempted to delete from an empty watchlist.",
+            ctx.author().id
+        );
         bail!("Watchlist is empty.");
     }
 
@@ -46,8 +46,9 @@ pub async fn delete(ctx: Context<'_>) -> Result<(), Error> {
     let components = vec![CreateActionRow::SelectMenu(menu)];
 
     info!(
-        "delete: presenting options user_id={} count={}",
-        user_id, limit
+        "User {} invoked /delete. Presenting {} symbols for deletion.",
+        ctx.author().id,
+        limit
     );
 
     ctx.send(
@@ -57,7 +58,6 @@ pub async fn delete(ctx: Context<'_>) -> Result<(), Error> {
     )
     .await?;
 
-    info!("delete: message sent user_id={}", user_id);
     Ok(())
 }
 
@@ -67,12 +67,6 @@ pub async fn handle_component(
     interaction: &serenity::ComponentInteraction,
 ) -> Result<(), Error> {
     let id = interaction.data.custom_id.as_str();
-    let user_id = interaction.user.id.get();
-
-    debug!(
-        "delete: component received user_id={} custom_id={}",
-        user_id, id
-    );
 
     if id == SELECT_DELETE_ID {
         let values = match &interaction.data.kind {
@@ -81,24 +75,28 @@ pub async fn handle_component(
         };
 
         if values.is_empty() {
-            debug!("delete: empty selection user_id={}", user_id);
+            debug!(
+                "User {} submitted an empty selection for deletion.",
+                interaction.user.id
+            );
             return Ok(());
         }
 
+        let user_id = interaction.user.id.get();
         let ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
         let req_id = format!("{user_id}-{ts}");
 
-        data.symbol_store
+        let _ = data
+            .symbol_store
             .set_pending_delete(req_id.to_string(), values.clone())
             .await?;
 
         info!(
-            "delete: confirmation created user_id={} req_id={} symbols=[{}]",
+            "User {} initiated delete confirmation for symbols: [{}]",
             user_id,
-            req_id,
             values.join(", ")
         );
 
@@ -128,16 +126,14 @@ pub async fn handle_component(
             )
             .await?;
 
-        debug!(
-            "delete: confirmation prompt shown user_id={} req_id={}",
-            user_id, req_id
-        );
         return Ok(());
     }
 
     if id == CANCEL_ID {
-        info!("delete: cancelled user_id={}", user_id);
-
+        info!(
+            "User {} cancelled the delete operation.",
+            interaction.user.id
+        );
         interaction
             .create_response(
                 ctx,
@@ -149,30 +145,27 @@ pub async fn handle_component(
             )
             .await?;
 
-        debug!("delete: cancel response sent user_id={}", user_id);
         return Ok(());
     }
 
     if let Some(req_id) = id.strip_prefix(CONFIRM_PREFIX) {
-        let owner = req_id.split('-').next().unwrap_or_default();
-
-        if owner != user_id.to_string() {
+        if let Some(owner) = req_id.split('-').next()
+            && owner != interaction.user.id.get().to_string()
+        {
             warn!(
-                "delete: confirm denied user_id={} req_id={} owner={}",
-                user_id, req_id, owner
+                "User {} attempted to confirm deletion for someone else's request (owner: {}).",
+                interaction.user.id, owner
             );
-
             interaction
                 .create_response(
                     ctx,
                     serenity::CreateInteractionResponse::Message(
                         serenity::CreateInteractionResponseMessage::new()
-                            .content("You can’t confirm someone else’s delete.")
+                            .content("❌ You can’t confirm someone else’s delete.")
                             .ephemeral(true),
                     ),
                 )
                 .await?;
-
             return Ok(());
         }
 
@@ -184,55 +177,37 @@ pub async fn handle_component(
             Some(s) => s,
             None => {
                 warn!(
-                    "delete: confirm expired user_id={} req_id={}",
-                    user_id, req_id
+                    "User {} tried to confirm deletion, but session expired or not found (req_id: {}).",
+                    interaction.user.id, req_id
                 );
-
                 interaction
                     .create_response(
                         ctx,
                         serenity::CreateInteractionResponse::Message(
                             serenity::CreateInteractionResponseMessage::new()
-                                .content("Session expired. Run /delete again.")
+                                .content("❌ Session expired. Run /delete again.")
                                 .ephemeral(true),
                         ),
                     )
                     .await?;
-
                 return Ok(());
             }
         };
 
-        info!(
-            "delete: confirm accepted user_id={} req_id={} count={} symbols=[{}]",
-            user_id,
-            req_id,
-            symbols.len(),
-            symbols.join(", ")
-        );
-
-        let mut ok = 0usize;
-        let mut fail = 0usize;
-
         for sym in &symbols {
             match data.symbol_store.remove(sym).await {
-                Ok(_) => {
-                    ok += 1;
-                    debug!("delete: removed user_id={} symbol={}", user_id, sym);
-                }
-                Err(e) => {
-                    fail += 1;
-                    error!(
-                        "delete: remove failed user_id={} symbol={} err={:?}",
-                        user_id, sym, e
-                    );
-                }
+                Ok(_) => info!("User {} deleted symbol '{}'.", interaction.user.id, sym),
+                Err(e) => error!(
+                    "Error deleting symbol '{}' for user {}: {:?}",
+                    sym, interaction.user.id, e
+                ),
             }
         }
 
         info!(
-            "delete: completed user_id={} req_id={} ok={} fail={}",
-            user_id, req_id, ok, fail
+            "User {} confirmed deletion of symbols: [{}]",
+            interaction.user.id,
+            symbols.join(", ")
         );
 
         interaction
@@ -246,16 +221,8 @@ pub async fn handle_component(
             )
             .await?;
 
-        debug!(
-            "delete: final response sent user_id={} req_id={}",
-            user_id, req_id
-        );
         return Ok(());
     }
 
-    debug!(
-        "delete: ignored component user_id={} custom_id={}",
-        user_id, id
-    );
     Ok(())
 }

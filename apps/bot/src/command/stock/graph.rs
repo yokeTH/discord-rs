@@ -1,9 +1,8 @@
 use chrono::Duration;
-use log::{debug, error, info};
+use log::{debug, error, info, trace, warn};
 use poise::CreateReply;
-use serenity::all::CreateAttachment;
-
-use stock::indicators::cdc::{calculate, generate_chart};
+use serenity::all::{CreateAttachment, CreateEmbed};
+use stock::indicators::cdc::{Signal, calculate, generate_chart};
 
 use crate::{Context, Error};
 
@@ -36,7 +35,6 @@ pub async fn graph(
             return Err(e.into());
         }
     };
-
     let closes: Vec<f64> = bars.iter().map(|b| b.close).collect();
     let dates: Vec<String> = bars
         .iter()
@@ -57,16 +55,23 @@ pub async fn graph(
         }
     };
 
-    let filename = format!("{}_chart.png", symbol.to_lowercase());
+    let filename = format!("{}_chart.png", symbol);
     let attachment = CreateAttachment::bytes(image_bytes, filename.clone());
 
-    info!("Sending attachment for symbol: {}", symbol);
-    ctx.send(
-        CreateReply::default()
-            .content(format!("**{}** `{:?}`", symbol.to_uppercase(), sig,))
-            .attachment(attachment),
-    )
-    .await?;
+    let mut embed = CreateEmbed::default()
+        .title(format!("{} Analysis", symbol.to_uppercase()))
+        .description(format!("Current Signal: {:?}", sig))
+        .image(format!("attachment://{}", filename));
+
+    embed = match sig {
+        Signal::Buy | Signal::BullishZone => embed.color(0x00ff00),
+        Signal::Sell | Signal::BearishZone => embed.color(0xff0000),
+        Signal::None => embed.color(0xffffff),
+    };
+
+    info!("Sending embed for symbol: {}", symbol);
+    ctx.send(CreateReply::default().embed(embed).attachment(attachment))
+        .await?;
 
     Ok(())
 }

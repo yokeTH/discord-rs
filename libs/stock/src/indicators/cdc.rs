@@ -72,8 +72,8 @@ pub fn generate_chart(
     );
 
     const LOOKBACK: usize = 90;
-    const WIDTH: u32 = 1920;
-    const HEIGHT: u32 = 1080;
+    const WIDTH: u32 = 1280;
+    const HEIGHT: u32 = 720;
 
     let lookback = LOOKBACK.min(prices.len());
     let start_idx = prices.len().saturating_sub(lookback);
