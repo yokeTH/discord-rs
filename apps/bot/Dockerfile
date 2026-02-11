@@ -1,7 +1,7 @@
 #
-# Builder
+# Base (chef)
 #
-FROM --platform=$BUILDPLATFORM rust:bookworm AS builder
+FROM --platform=$BUILDPLATFORM rust:bookworm AS chef
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -19,6 +19,32 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
+RUN cargo install cargo-chef --locked
+
+#
+# Planner
+#
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+#
+# Cacher
+#
+FROM chef AS cacher
+COPY --from=planner /app/recipe.json /app/recipe.json
+
+RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=cargo-target,target=/app/target \
+    cargo chef cook --release --recipe-path recipe.json
+
+#
+# Builder
+#
+FROM chef AS builder
+WORKDIR /app
+
 ENV FONT_VERSION=3.2.1
 ENV FONT_DIR=/usr/share/fonts/JetBrainsMono
 
@@ -30,9 +56,12 @@ RUN mkdir -p "${FONT_DIR}" \
     && fc-cache -fv
 
 COPY . .
-RUN cargo build -p bot --release
 
-RUN mkdir -p \
+RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=cargo-target,target=/app/target \
+    cargo build -p bot --release \
+    && mkdir -p \
     /out/lib \
     /out/etc/ssl/certs \
     /out/usr/share/fonts \
@@ -46,7 +75,6 @@ RUN mkdir -p \
     && cp -r /etc/fonts/* /out/etc/fonts/ \
     && (cp -r /var/cache/fontconfig/* /out/var/cache/fontconfig/ || true) \
     && (ldd /app/target/release/bot || true)
-
 
 #
 # Runner
