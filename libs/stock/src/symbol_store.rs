@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use anyhow::Error;
-use fred::prelude::*;
+use fred::{prelude::*, socket2::TcpKeepalive};
 
 use tracing::{debug, error, info, instrument, warn};
 
@@ -20,15 +20,39 @@ impl SymbolStore {
         let client = Builder::from_config(config)
             .with_connection_config(|config| {
                 config.connection_timeout = Duration::from_secs(5);
+                config.unresponsive.max_timeout = Some(Duration::from_secs(30));
+                config.unresponsive.interval = Duration::from_secs(2);
+
                 config.tcp = TcpConfig {
                     nodelay: Some(true),
+                    keepalive: Some(
+                        TcpKeepalive::new()
+                            .with_time(Duration::from_secs(30))
+                            .with_interval(Duration::from_secs(10)),
+                    ),
                     ..Default::default()
                 };
+            })
+            .with_performance_config(|p| {
+                p.default_command_timeout = Duration::from_secs(10);
+            })
+            .set_policy(ReconnectPolicy::Exponential {
+                attempts: 3,
+                max_attempts: 10,
+                min_delay: 1,
+                max_delay: 30,
+                base: 2,
+                jitter: 500,
             })
             .build()?;
 
         client.on_error(|(err, server)| async move {
             error!(server = ?server, error = ?err, "redis client error");
+            Ok(())
+        });
+
+        client.on_reconnect(|server| async move {
+            info!("Reconnected to {}", server);
             Ok(())
         });
 
