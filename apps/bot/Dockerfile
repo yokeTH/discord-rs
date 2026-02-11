@@ -34,10 +34,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM chef AS cacher
 COPY --from=planner /app/recipe.json /app/recipe.json
 
-RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
-    --mount=type=cache,id=cargo-target,target=/app/target \
-    cargo chef cook --release --recipe-path recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
 
 #
 # Builder
@@ -56,12 +53,9 @@ RUN mkdir -p "${FONT_DIR}" \
     && fc-cache -fv
 
 COPY . .
+RUN cargo build -p bot --release
 
-RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
-    --mount=type=cache,id=cargo-target,target=/app/target \
-    cargo build -p bot --release \
-    && mkdir -p \
+RUN mkdir -p \
     /out/lib \
     /out/etc/ssl/certs \
     /out/usr/share/fonts \
