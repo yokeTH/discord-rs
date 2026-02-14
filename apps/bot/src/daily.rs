@@ -174,12 +174,12 @@ pub async fn run_daily(
         channel.send_message(&http, msg).await?;
     } else {
         info!("no actionable signals found");
-        channel
-            .send_message(
-                &http,
-                CreateMessage::new().content("No Buy/Sell signals found."),
-            )
-            .await?;
+        // channel
+        //     .send_message(
+        //         &http,
+        //         CreateMessage::new().content("No Buy/Sell signals found."),
+        //     )
+        //     .await?;
     }
 
     Ok(())
