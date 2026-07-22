@@ -38,13 +38,25 @@ mod types;
 #[cfg(feature = "http")]
 mod client;
 #[cfg(feature = "http")]
+mod crypto;
+#[cfg(feature = "http")]
 mod error;
 #[cfg(feature = "http")]
+mod events;
+#[cfg(feature = "http")]
 mod fundamentals;
+#[cfg(feature = "http")]
+mod futures;
+#[cfg(feature = "http")]
+mod options;
+#[cfg(feature = "http")]
+mod screener;
 #[cfg(feature = "http")]
 mod signature;
 #[cfg(feature = "http")]
 mod trade_misc;
+#[cfg(feature = "http")]
+mod watchlist;
 
 pub use account::{Account, Balance, CurrencyAsset, Position};
 pub use auth::Token;
@@ -64,6 +76,8 @@ pub use types::{
 
 #[cfg(feature = "http")]
 pub use client::{PROD_BASE_URL, UAT_BASE_URL, WebullClient};
+#[cfg(feature = "http")]
+pub use options::OptionContractsParams;
 
 /// The crate error type. Matches the repo convention of using `anyhow`.
 pub type Error = anyhow::Error;
