@@ -181,6 +181,45 @@ impl WebullClient {
         self.get(path, &query, true).await
     }
 
+    /// Signed GET for the common `?symbols=<csv>&category=` shape.
+    pub(crate) async fn get_symbols_category(
+        &self,
+        path: &str,
+        symbols: &[&str],
+        category: crate::Category,
+    ) -> Result<serde_json::Value> {
+        let query = vec![
+            ("symbols".to_string(), symbols.join(",")),
+            ("category".to_string(), category.as_str().to_string()),
+        ];
+        self.get(path, &query, true).await
+    }
+
+    /// Signed GET for the common historical-bars shape
+    /// (`symbols`, `category`, `timespan`, optional `count`/`real_time_required`).
+    pub(crate) async fn get_bars(
+        &self,
+        path: &str,
+        symbols: &[&str],
+        category: crate::Category,
+        timespan: crate::Timespan,
+        count: Option<u32>,
+        real_time_required: Option<bool>,
+    ) -> Result<serde_json::Value> {
+        let mut query = vec![
+            ("symbols".to_string(), symbols.join(",")),
+            ("category".to_string(), category.as_str().to_string()),
+            ("timespan".to_string(), timespan.as_str().to_string()),
+        ];
+        if let Some(c) = count {
+            query.push(("count".to_string(), c.to_string()));
+        }
+        if let Some(r) = real_time_required {
+            query.push(("real_time_required".to_string(), r.to_string()));
+        }
+        self.get(path, &query, true).await
+    }
+
     /// Core request pipeline: sign, attach headers, send, map errors, decode.
     ///
     /// `body` is the exact compact-JSON string to send (and hash) — signing and
