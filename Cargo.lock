@@ -144,6 +144,7 @@ dependencies = [
  "tracing",
  "tracing-futures",
  "tracing-subscriber",
+ "webull",
 ]
 
 [[package]]

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 stock = { workspace = true }
+webull = { workspace = true }
 
 anyhow = { workspace = true }
 chrono = { workspace = true }

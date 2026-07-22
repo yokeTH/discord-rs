@@ -1,5 +1,6 @@
 //! The [`WebullClient`] and its signed-request plumbing.
 
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -18,9 +19,10 @@ pub const UAT_BASE_URL: &str = "https://th-api.uat.webullbroker.com";
 
 /// A client for the Webull OpenAPI.
 ///
-/// Cheap to [`Clone`] (wraps an `Arc`-backed [`reqwest::Client`]). Construct
-/// with [`WebullClient::new`] or [`WebullClient::from_env`], and attach a
-/// verified access token with [`WebullClient::with_access_token`].
+/// Cheap to [`Clone`]; clones share the same access-token store, so a token
+/// updated via [`WebullClient::set_access_token`] (e.g. by a background refresh)
+/// is seen by every clone. Construct with [`WebullClient::new`] or
+/// [`WebullClient::from_env`].
 #[derive(Clone)]
 pub struct WebullClient {
     client: Client,
@@ -30,7 +32,8 @@ pub struct WebullClient {
     host: String,
     app_key: String,
     app_secret: String,
-    access_token: Option<String>,
+    /// Shared, mutable access token, updated in place by token refresh.
+    access_token: Arc<RwLock<Option<String>>>,
 }
 
 impl WebullClient {
@@ -63,7 +66,7 @@ impl WebullClient {
             host,
             app_key,
             app_secret,
-            access_token,
+            access_token: Arc::new(RwLock::new(access_token)),
         })
     }
 
@@ -84,15 +87,27 @@ impl WebullClient {
         Self::new(base_url, app_key, app_secret, access_token)
     }
 
-    /// Return a copy of this client that uses `token` for authenticated calls.
-    pub fn with_access_token(mut self, token: String) -> Self {
-        self.access_token = Some(token);
+    /// Return this client configured to use `token` for authenticated calls.
+    pub fn with_access_token(self, token: String) -> Self {
+        self.set_access_token(token);
         self
     }
 
+    /// Replace the access token used for authenticated calls. The change is
+    /// shared with every clone of this client.
+    pub fn set_access_token(&self, token: String) {
+        *self
+            .access_token
+            .write()
+            .expect("access-token lock poisoned") = Some(token);
+    }
+
     /// The currently configured access token, if any.
-    pub fn access_token(&self) -> Option<&str> {
-        self.access_token.as_deref()
+    pub fn access_token(&self) -> Option<String> {
+        self.access_token
+            .read()
+            .expect("access-token lock poisoned")
+            .clone()
     }
 
     /// Signed `GET` returning a decoded JSON body.
@@ -138,7 +153,8 @@ impl WebullClient {
         body: Option<String>,
         authed: bool,
     ) -> Result<T> {
-        if authed && self.access_token.is_none() {
+        let access_token = self.access_token();
+        if authed && access_token.is_none() {
             anyhow::bail!(
                 "webull: {path} requires an access token, but none is configured \
                  (set WEBULL_ACCESS_TOKEN or call with_access_token)"
@@ -175,7 +191,7 @@ impl WebullClient {
         if !query.is_empty() {
             req = req.query(query);
         }
-        if authed && let Some(token) = &self.access_token {
+        if authed && let Some(token) = &access_token {
             req = req.header("x-access-token", token);
         }
         if let Some(body) = body {

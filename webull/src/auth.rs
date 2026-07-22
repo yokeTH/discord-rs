@@ -45,4 +45,31 @@ impl WebullClient {
         )
         .await
     }
+
+    /// Refresh (extend) an existing token without re-doing 2FA, returning the
+    /// refreshed token and its new expiry. This works while the current token
+    /// is still valid; a fully `EXPIRED`/`INVALID` token must be re-created via
+    /// [`WebullClient::create_token`] (which needs 2FA again).
+    #[instrument(name = "webull_refresh_token", skip_all)]
+    pub async fn refresh_token(&self, token: &str) -> Result<Token> {
+        self.post(
+            "/openapi/auth/token/refresh",
+            &CheckTokenBody { token },
+            true,
+        )
+        .await
+    }
+
+    /// Refresh the client's current in-memory token and store the result back
+    /// on the client, keeping it alive without repeating 2FA. Errors if no
+    /// token is currently set.
+    #[instrument(name = "webull_refresh_and_store", skip_all)]
+    pub async fn refresh_and_store(&self) -> Result<Token> {
+        let current = self
+            .access_token()
+            .ok_or_else(|| anyhow::anyhow!("webull: no access token to refresh"))?;
+        let refreshed = self.refresh_token(&current).await?;
+        self.set_access_token(refreshed.token.clone());
+        Ok(refreshed)
+    }
 }

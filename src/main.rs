@@ -13,8 +13,10 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 use tracing::{debug, error, info, instrument, warn};
 use tracing_futures::Instrument;
 use tracing_subscriber::{EnvFilter, fmt};
+use webull::WebullClient;
 
 mod daily;
+mod token_refresh;
 
 pub async fn event_handler(
     serenity_ctx: &serenity::Context,
@@ -83,6 +85,19 @@ async fn main() -> Result<()> {
 
     let price_client = Arc::new(PriceClient::from_env()?);
     info!("price client initialized");
+
+    // Keep the Webull access token alive in the background (if configured).
+    match WebullClient::from_env() {
+        Ok(webull) if webull.access_token().is_some() => {
+            token_refresh::spawn(Arc::new(webull));
+            info!("webull token auto-refresh started");
+        }
+        Ok(_) => warn!(
+            "webull configured but WEBULL_ACCESS_TOKEN is unset; \
+             run the create_token example to issue one"
+        ),
+        Err(e) => debug!(error = ?e, "webull not configured; token refresh disabled"),
+    }
 
     let intents = GatewayIntents::non_privileged();
     let commands = vec![stock_command()];
