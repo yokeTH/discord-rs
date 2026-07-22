@@ -11,6 +11,28 @@ use anyhow::Result;
 #[cfg(feature = "http")]
 use tracing::instrument;
 
+/// Accepts a JSON string or number, yielding a `String` — some endpoints return
+/// numeric timestamps where the docs show strings.
+fn de_string_or_number<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(serde::Deserialize)]
+    #[serde(untagged)]
+    enum StrOrNum {
+        Str(String),
+        Int(i64),
+        Uint(u64),
+        Float(f64),
+    }
+    Ok(match StrOrNum::deserialize(deserializer)? {
+        StrOrNum::Str(s) => s,
+        StrOrNum::Int(i) => i.to_string(),
+        StrOrNum::Uint(u) => u.to_string(),
+        StrOrNum::Float(f) => f.to_string(),
+    })
+}
+
 /// Real-time snapshot for a single symbol.
 ///
 /// Prices are strings (see [`crate::types`]). Extended-hours (`extend_hour_*`)
@@ -80,6 +102,7 @@ pub struct QuoteBroker {
 pub struct Quote {
     pub symbol: String,
     pub instrument_id: String,
+    #[serde(deserialize_with = "de_string_or_number")]
     pub quote_time: String,
     pub asks: Vec<QuoteLevel>,
     pub bids: Vec<QuoteLevel>,

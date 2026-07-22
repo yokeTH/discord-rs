@@ -52,6 +52,15 @@ fn deserializes_quote() {
 }
 
 #[test]
+fn quote_time_accepts_number() {
+    // UAT returns quote_time as a JSON number; the docs show a string.
+    let json =
+        r#"{"symbol":"F","instrument_id":"1","quote_time":1784747968460,"asks":[],"bids":[]}"#;
+    let quote: Quote = serde_json::from_str(json).unwrap();
+    assert_eq!(quote.quote_time, "1784747968460");
+}
+
+#[test]
 fn deserializes_bars_with_camelcase_ticker_id() {
     let json = r#"[
       {"tickerId":"913256135","symbol":"AAPL","time":"2021-12-28T09:00:09.945+0000",

@@ -13,7 +13,7 @@
 /// variant, wiring up `as_str`, `Display`, `Serialize`, and `Deserialize` from
 /// a single source of truth.
 macro_rules! wire_enum {
-    ($(#[$meta:meta])* $name:ident { $($(#[$vmeta:meta])* $variant:ident => $wire:literal),* $(,)? }) => {
+    ($(#[$meta:meta])* $name:ident { $($(#[$vmeta:meta])* $variant:ident => $wire:literal $(| $alias:literal)*),* $(,)? }) => {
         $(#[$meta])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         pub enum $name {
@@ -46,7 +46,7 @@ macro_rules! wire_enum {
             fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
                 let s = <String as serde::Deserialize>::deserialize(d)?;
                 match s.as_str() {
-                    $($wire => Ok(Self::$variant),)*
+                    $($wire $(| $alias)* => Ok(Self::$variant),)*
                     other => Err(serde::de::Error::custom(format!(
                         concat!("unknown ", stringify!($name), ": {}"),
                         other
@@ -175,7 +175,7 @@ wire_enum! {
     OrderStatus {
         Pending => "PENDING",
         Submitted => "SUBMITTED",
-        Cancelled => "CANCELLED",
+        Cancelled => "CANCELED" | "CANCELLED",
         Filled => "FILLED",
         Failed => "FAILED",
         PartialFilled => "PARTIAL_FILLED",
