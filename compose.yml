@@ -1,0 +1,36 @@
+# CockroachDB for local development (insecure single-node).
+#
+#   DATABASE_URL=postgresql://root@localhost:26257/discord_bot?sslmode=disable
+#   Admin UI:    http://localhost:8080
+#
+# Start with `docker compose up -d`, then apply the schema with
+# `bun run migrate:deploy` (or `prisma migrate deploy`).
+services:
+  cockroach:
+    image: cockroachdb/cockroach:v24.3.34
+    command: ["start-single-node", "--insecure"]
+    ports:
+      - "26257:26257" # SQL (PostgreSQL wire protocol)
+      - "8080:8080" # Admin UI
+    volumes:
+      - cockroach-data:/cockroach/cockroach-data
+    healthcheck:
+      test: ["CMD", "cockroach", "sql", "--insecure", "--host=localhost", "-e", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # One-shot: create the application database once the node is healthy.
+  cockroach-init:
+    image: cockroachdb/cockroach:v24.3.34
+    depends_on:
+      cockroach:
+        condition: service_healthy
+    command:
+      ["sql", "--insecure", "--host=cockroach", "-e", "CREATE DATABASE IF NOT EXISTS discord_bot;"]
+    restart: "no"
+
+volumes:
+  cockroach-data:
