@@ -1,10 +1,13 @@
 //! Account queries: list accounts, balances, and positions.
 
-use anyhow::Result;
 use serde::Deserialize;
-use tracing::instrument;
 
+#[cfg(feature = "http")]
 use crate::client::WebullClient;
+#[cfg(feature = "http")]
+use anyhow::Result;
+#[cfg(feature = "http")]
+use tracing::instrument;
 
 /// A brokerage account belonging to the authenticated user.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -56,6 +59,7 @@ pub struct Position {
     pub unrealized_profit_loss: String,
 }
 
+#[cfg(feature = "http")]
 impl WebullClient {
     /// List the authenticated user's accounts.
     #[instrument(name = "webull_account_list", skip_all)]

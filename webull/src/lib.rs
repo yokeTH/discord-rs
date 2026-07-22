@@ -1,9 +1,11 @@
-//! Client for the Webull OpenAPI (Thailand — `developer.webull.co.th`).
+//! Client for the Webull OpenAPI — a Rust port of the official Python SDK's
+//! REST surface (trade + market data).
 //!
-//! Covers market data (snapshot / quotes / bars), instrument reference data,
-//! account queries, and the stock order lifecycle. Every request is signed with
-//! a per-request HMAC-SHA256 signature (see [`signature`]) and, for
-//! authenticated calls, carries a verified `x-access-token`.
+//! Requests are signed with a per-request HMAC-SHA256 signature (see the
+//! `signature` module) and, for authenticated calls, carry a verified
+//! `x-access-token`. Enums and data models are always available; the HTTP
+//! client itself lives behind the default `http` feature, so
+//! `--no-default-features` yields a lightweight types-only build (no reqwest).
 //!
 //! # Getting started
 //!
@@ -22,31 +24,42 @@
 //! Authenticated endpoints require a `NORMAL` access token. Create one with
 //! [`WebullClient::create_token`], verify it via SMS 2FA in the Webull app
 //! within 5 minutes, then supply it via `WEBULL_ACCESS_TOKEN` or
-//! [`WebullClient::with_access_token`]. Tokens last ~15 days.
+//! [`WebullClient::with_access_token`]. Tokens last ~15 days and can be kept
+//! alive with [`WebullClient::refresh_and_store`].
 
 mod account;
 mod auth;
-mod client;
-mod error;
 mod instrument;
 mod market;
 mod order;
-mod signature;
+mod region;
 mod types;
+
+#[cfg(feature = "http")]
+mod client;
+#[cfg(feature = "http")]
+mod error;
+#[cfg(feature = "http")]
+mod signature;
 
 pub use account::{Account, Balance, CurrencyAsset, Position};
 pub use auth::Token;
-pub use client::{PROD_BASE_URL, UAT_BASE_URL, WebullClient};
 pub use instrument::Instrument;
 pub use market::{Bar, Quote, QuoteBroker, QuoteLevel, QuoteOrder, Snapshot};
 pub use order::{
     Commission, Fee, ModifyOrder, NewOrder, OrderLeg, OrderRecord, OrderRequest, OrderResponse,
     PreviewResponse, ReplaceOrderRequest,
 };
+pub use region::Region;
 pub use types::{
-    Category, ComboType, EntrustType, InstrumentType, Market, OrderSide, OrderStatus, OrderType,
-    TimeInForce, Timespan, TokenStatus, TradingSession,
+    AccountType, Category, ComboTickerType, ComboType, ContractType, Currency, Direction,
+    EntrustType, ExchangeCode, ExerciseStyle, ExpirationCycle, ForbidReason, InstrumentStatus,
+    InstrumentType, Market, OptionType, OrderSide, OrderStatus, OrderType, PositionIntent,
+    TimeInForce, Timespan, TokenStatus, TradePolicy, TradingDateType, TradingSession, TrailingType,
 };
+
+#[cfg(feature = "http")]
+pub use client::{PROD_BASE_URL, UAT_BASE_URL, WebullClient};
 
 /// The crate error type. Matches the repo convention of using `anyhow`.
 pub type Error = anyhow::Error;

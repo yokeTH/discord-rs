@@ -1,11 +1,15 @@
 //! Instrument reference data (tradability, margin, lot size).
 
-use anyhow::Result;
 use serde::Deserialize;
-use tracing::instrument;
 
+#[cfg(feature = "http")]
 use crate::client::WebullClient;
+#[cfg(feature = "http")]
 use crate::types::Category;
+#[cfg(feature = "http")]
+use anyhow::Result;
+#[cfg(feature = "http")]
+use tracing::instrument;
 
 /// Reference data for a tradable instrument.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -29,6 +33,7 @@ pub struct Instrument {
     pub margin_requirement_short: Option<String>,
 }
 
+#[cfg(feature = "http")]
 impl WebullClient {
     /// Look up instruments by category, optionally filtered to `symbols`
     /// (comma-joined, max 100). Pass an empty slice to list the category.
