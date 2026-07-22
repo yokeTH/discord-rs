@@ -20,7 +20,7 @@ tracing-futures = { workspace = true }
 
 [workspace]
 resolver = "3"
-members = ["stock"]
+members = ["stock", "webull"]
 
 [workspace.dependencies]
 anyhow = "1"
@@ -33,5 +33,11 @@ tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+hmac = "0.12"
+sha2 = "0.10"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
+percent-encoding = "2"
 
 stock = { path = "stock" }
+webull = { path = "webull" }
