@@ -166,6 +166,21 @@ impl WebullClient {
             .await
     }
 
+    /// Signed GET for the common `?symbol=&category=` shape, returning the raw
+    /// JSON body (used by the many single-symbol market-data endpoints).
+    pub(crate) async fn get_symbol_category(
+        &self,
+        path: &str,
+        symbol: &str,
+        category: crate::Category,
+    ) -> Result<serde_json::Value> {
+        let query = vec![
+            ("symbol".to_string(), symbol.to_string()),
+            ("category".to_string(), category.as_str().to_string()),
+        ];
+        self.get(path, &query, true).await
+    }
+
     /// Core request pipeline: sign, attach headers, send, map errors, decode.
     ///
     /// `body` is the exact compact-JSON string to send (and hash) — signing and
