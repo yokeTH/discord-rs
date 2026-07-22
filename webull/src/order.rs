@@ -1,14 +1,18 @@
 //! Stock order lifecycle: preview, place, replace, cancel, and queries.
 
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use tracing::instrument;
 
-use crate::client::WebullClient;
 use crate::types::{
     ComboType, EntrustType, InstrumentType, Market, OrderSide, OrderStatus, OrderType, TimeInForce,
     TradingSession,
 };
+
+#[cfg(feature = "http")]
+use crate::client::WebullClient;
+#[cfg(feature = "http")]
+use anyhow::Result;
+#[cfg(feature = "http")]
+use tracing::instrument;
 
 /// A single order to preview or place.
 ///
@@ -95,6 +99,7 @@ pub struct ReplaceOrderRequest {
     pub modify_orders: Vec<ModifyOrder>,
 }
 
+#[cfg(feature = "http")]
 #[derive(Serialize)]
 struct CancelOrderBody<'a> {
     account_id: &'a str,
@@ -172,6 +177,7 @@ pub struct OrderRecord {
     pub orders: Vec<OrderLeg>,
 }
 
+#[cfg(feature = "http")]
 impl WebullClient {
     /// Preview an order (estimated cost and fees) without placing it.
     #[instrument(name = "webull_preview_order", skip_all)]

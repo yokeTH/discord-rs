@@ -5,12 +5,18 @@
 //! auto-activates it). A `NORMAL` token is reusable for ~15 days. Neither of
 //! these calls requires an existing access token.
 
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use tracing::instrument;
+use serde::Deserialize;
 
-use crate::client::WebullClient;
 use crate::types::TokenStatus;
+
+#[cfg(feature = "http")]
+use crate::client::WebullClient;
+#[cfg(feature = "http")]
+use anyhow::Result;
+#[cfg(feature = "http")]
+use serde::Serialize;
+#[cfg(feature = "http")]
+use tracing::instrument;
 
 /// An access token and its lifecycle metadata.
 #[derive(Debug, Clone, Deserialize)]
@@ -22,11 +28,13 @@ pub struct Token {
     pub status: TokenStatus,
 }
 
+#[cfg(feature = "http")]
 #[derive(Serialize)]
 struct CheckTokenBody<'a> {
     token: &'a str,
 }
 
+#[cfg(feature = "http")]
 impl WebullClient {
     /// Create a new access token. The returned token starts `PENDING` and needs
     /// 2FA verification (see the module docs) before it can authenticate calls.

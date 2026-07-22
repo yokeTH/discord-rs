@@ -1,11 +1,15 @@
 //! Market data: real-time snapshot, order-book quotes, and historical bars.
 
-use anyhow::Result;
 use serde::Deserialize;
-use tracing::instrument;
 
+#[cfg(feature = "http")]
 use crate::client::WebullClient;
+#[cfg(feature = "http")]
 use crate::types::{Category, Timespan};
+#[cfg(feature = "http")]
+use anyhow::Result;
+#[cfg(feature = "http")]
+use tracing::instrument;
 
 /// Real-time snapshot for a single symbol.
 ///
@@ -100,6 +104,7 @@ pub struct Bar {
     pub trading_session: Option<String>,
 }
 
+#[cfg(feature = "http")]
 impl WebullClient {
     /// Real-time snapshots for up to 100 symbols.
     #[instrument(name = "webull_snapshot", skip(self), fields(symbols = symbols.len()))]

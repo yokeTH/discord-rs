@@ -70,6 +70,17 @@ impl WebullClient {
         })
     }
 
+    /// Build a client for a specific [`Region`](crate::Region), using that
+    /// region's REST host.
+    pub fn for_region(
+        region: crate::Region,
+        app_key: String,
+        app_secret: String,
+        access_token: Option<String>,
+    ) -> Result<Self> {
+        Self::new(region.base_url(), app_key, app_secret, access_token)
+    }
+
     /// Build a client from environment variables:
     /// `WEBULL_APP_KEY`, `WEBULL_APP_SECRET` (required), `WEBULL_ACCESS_TOKEN`
     /// and `WEBULL_BASE_URL` (optional; base URL defaults to [`PROD_BASE_URL`]).
@@ -117,7 +128,8 @@ impl WebullClient {
         query: &[(String, String)],
         authed: bool,
     ) -> Result<T> {
-        self.request(Method::GET, path, query, None, authed).await
+        self.request(Method::GET, path, query, None, authed, &[])
+            .await
     }
 
     /// Signed `POST` with a JSON body, returning a decoded JSON body.
@@ -127,8 +139,20 @@ impl WebullClient {
         body: &B,
         authed: bool,
     ) -> Result<T> {
+        self.post_with_headers(path, body, authed, &[]).await
+    }
+
+    /// Signed `POST` with a JSON body plus extra request headers (e.g. the
+    /// `category` header on order writes).
+    pub(crate) async fn post_with_headers<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+        authed: bool,
+        extra_headers: &[(String, String)],
+    ) -> Result<T> {
         let json = serde_json::to_string(body).context("serializing webull request body")?;
-        self.request(Method::POST, path, &[], Some(json), authed)
+        self.request(Method::POST, path, &[], Some(json), authed, extra_headers)
             .await
     }
 
@@ -138,7 +162,8 @@ impl WebullClient {
         path: &str,
         authed: bool,
     ) -> Result<T> {
-        self.request(Method::POST, path, &[], None, authed).await
+        self.request(Method::POST, path, &[], None, authed, &[])
+            .await
     }
 
     /// Core request pipeline: sign, attach headers, send, map errors, decode.
@@ -152,6 +177,7 @@ impl WebullClient {
         query: &[(String, String)],
         body: Option<String>,
         authed: bool,
+        extra_headers: &[(String, String)],
     ) -> Result<T> {
         let access_token = self.access_token();
         if authed && access_token.is_none() {
@@ -188,6 +214,9 @@ impl WebullClient {
             .header("x-signature", &sig)
             .header("x-version", "v2");
 
+        for (name, value) in extra_headers {
+            req = req.header(name.as_str(), value.as_str());
+        }
         if !query.is_empty() {
             req = req.query(query);
         }
