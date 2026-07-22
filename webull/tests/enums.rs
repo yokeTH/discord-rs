@@ -3,7 +3,7 @@
 
 use webull::{
     Category, ComboType, Direction, ExchangeCode, ExpirationCycle, OptionType, OrderSide,
-    OrderType, PositionIntent, TimeInForce, Timespan,
+    OrderStatus, OrderType, PositionIntent, TimeInForce, Timespan,
 };
 
 fn roundtrip<T>(value: T, wire: &str)
@@ -48,4 +48,21 @@ fn as_str_matches_serialization() {
 fn unknown_value_is_rejected() {
     assert!(serde_json::from_str::<OrderSide>("\"NOPE\"").is_err());
     assert!(serde_json::from_str::<Timespan>("\"X9\"").is_err());
+}
+
+#[test]
+fn order_status_accepts_both_cancel_spellings() {
+    // The live API returns `CANCELED`; the SDK documented `CANCELLED`. Accept both.
+    assert_eq!(
+        serde_json::from_str::<OrderStatus>("\"CANCELED\"").unwrap(),
+        OrderStatus::Cancelled
+    );
+    assert_eq!(
+        serde_json::from_str::<OrderStatus>("\"CANCELLED\"").unwrap(),
+        OrderStatus::Cancelled
+    );
+    assert_eq!(
+        serde_json::to_string(&OrderStatus::Cancelled).unwrap(),
+        "\"CANCELED\""
+    );
 }
