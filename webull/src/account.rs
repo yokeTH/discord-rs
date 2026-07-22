@@ -80,4 +80,47 @@ impl WebullClient {
         let query = vec![("account_id".to_string(), account_id.to_string())];
         self.get("/openapi/assets/positions", &query, true).await
     }
+
+    /// Detailed lots for a single position.
+    #[instrument(name = "webull_position_details", skip(self))]
+    pub async fn account_position_details(
+        &self,
+        account_id: &str,
+        instrument_id: &str,
+        page_size: Option<u32>,
+        last_id: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let mut query = vec![
+            ("account_id".to_string(), account_id.to_string()),
+            ("instrument_id".to_string(), instrument_id.to_string()),
+        ];
+        if let Some(n) = page_size {
+            query.push(("page_size".to_string(), n.to_string()));
+        }
+        if let Some(id) = last_id {
+            query.push(("last_id".to_string(), id.to_string()));
+        }
+        self.get("/openapi/assets/position/details", &query, true)
+            .await
+    }
+
+    /// Account profile (legacy v1 endpoint).
+    #[instrument(name = "webull_account_profile", skip(self))]
+    pub async fn account_profile(&self, account_id: &str) -> Result<serde_json::Value> {
+        let query = vec![("account_id".to_string(), account_id.to_string())];
+        self.get("/account/profile", &query, true).await
+    }
+
+    /// List the app's market-data / trading subscriptions.
+    #[instrument(name = "webull_app_subscriptions", skip(self))]
+    pub async fn app_subscriptions(
+        &self,
+        subscription_id: Option<&str>,
+    ) -> Result<serde_json::Value> {
+        let mut query = Vec::new();
+        if let Some(id) = subscription_id {
+            query.push(("subscription_id".to_string(), id.to_string()));
+        }
+        self.get("/app/subscriptions/list", &query, true).await
+    }
 }

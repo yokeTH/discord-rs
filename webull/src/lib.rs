@@ -41,14 +41,16 @@ mod client;
 mod error;
 #[cfg(feature = "http")]
 mod signature;
+#[cfg(feature = "http")]
+mod trade_misc;
 
 pub use account::{Account, Balance, CurrencyAsset, Position};
 pub use auth::Token;
 pub use instrument::Instrument;
 pub use market::{Bar, Quote, QuoteBroker, QuoteLevel, QuoteOrder, Snapshot};
 pub use order::{
-    Commission, Fee, ModifyOrder, NewOrder, OrderLeg, OrderRecord, OrderRequest, OrderResponse,
-    PreviewResponse, ReplaceOrderRequest,
+    BatchOrderRequest, Commission, Fee, ModifyOrder, NewOrder, OrderLeg, OrderRecord, OrderRequest,
+    OrderResponse, PreviewResponse, ReplaceOrderRequest,
 };
 pub use region::Region;
 pub use types::{

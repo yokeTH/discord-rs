@@ -10,6 +10,8 @@ use crate::types::{
 #[cfg(feature = "http")]
 use crate::client::WebullClient;
 #[cfg(feature = "http")]
+use crate::types::Category;
+#[cfg(feature = "http")]
 use anyhow::Result;
 #[cfg(feature = "http")]
 use tracing::instrument;
@@ -99,11 +101,24 @@ pub struct ReplaceOrderRequest {
     pub modify_orders: Vec<ModifyOrder>,
 }
 
+/// Request body for batch order placement (v3, US-only).
+#[derive(Debug, Clone, Serialize)]
+pub struct BatchOrderRequest {
+    pub account_id: String,
+    pub batch_orders: Vec<NewOrder>,
+}
+
 #[cfg(feature = "http")]
 #[derive(Serialize)]
 struct CancelOrderBody<'a> {
     account_id: &'a str,
     client_order_id: &'a str,
+}
+
+/// The `category` header required by the unified order endpoints.
+#[cfg(feature = "http")]
+fn category_header(category: Category) -> [(String, String); 1] {
+    [("category".to_string(), category.as_str().to_string())]
 }
 
 /// Result of placing, replacing, or cancelling an order.
@@ -179,24 +194,70 @@ pub struct OrderRecord {
 
 #[cfg(feature = "http")]
 impl WebullClient {
-    /// Preview an order (estimated cost and fees) without placing it.
+    /// Preview an order (estimated cost and fees) without placing it. `category`
+    /// (e.g. [`Category::UsStock`]) sets the required `category` header.
     #[instrument(name = "webull_preview_order", skip_all)]
-    pub async fn preview_order(&self, request: &OrderRequest) -> Result<PreviewResponse> {
-        self.post("/openapi/trade/order/preview", request, true)
-            .await
+    pub async fn preview_order(
+        &self,
+        request: &OrderRequest,
+        category: Category,
+    ) -> Result<PreviewResponse> {
+        self.post_with_headers(
+            "/openapi/trade/order/preview",
+            request,
+            true,
+            &category_header(category),
+        )
+        .await
     }
 
-    /// Place one or more orders.
+    /// Place one or more orders. `category` (e.g. [`Category::UsStock`]) sets the
+    /// required `category` header on the unified order endpoint.
     #[instrument(name = "webull_place_order", skip_all, fields(account_id = %request.account_id, orders = request.new_orders.len()))]
-    pub async fn place_order(&self, request: &OrderRequest) -> Result<OrderResponse> {
-        self.post("/openapi/trade/order/place", request, true).await
+    pub async fn place_order(
+        &self,
+        request: &OrderRequest,
+        category: Category,
+    ) -> Result<OrderResponse> {
+        self.post_with_headers(
+            "/openapi/trade/order/place",
+            request,
+            true,
+            &category_header(category),
+        )
+        .await
     }
 
-    /// Modify one or more live orders.
+    /// Place a batch of orders (v3, US-only).
+    #[instrument(name = "webull_batch_place_order", skip_all, fields(account_id = %request.account_id))]
+    pub async fn batch_place_order(
+        &self,
+        request: &BatchOrderRequest,
+        category: Category,
+    ) -> Result<serde_json::Value> {
+        self.post_with_headers(
+            "/openapi/trade/order/batch-place",
+            request,
+            true,
+            &category_header(category),
+        )
+        .await
+    }
+
+    /// Modify one or more live orders. `category` sets the required header.
     #[instrument(name = "webull_replace_order", skip_all, fields(account_id = %request.account_id))]
-    pub async fn replace_order(&self, request: &ReplaceOrderRequest) -> Result<OrderResponse> {
-        self.post("/openapi/trade/order/replace", request, true)
-            .await
+    pub async fn replace_order(
+        &self,
+        request: &ReplaceOrderRequest,
+        category: Category,
+    ) -> Result<OrderResponse> {
+        self.post_with_headers(
+            "/openapi/trade/order/replace",
+            request,
+            true,
+            &category_header(category),
+        )
+        .await
     }
 
     /// Cancel a live order by its client order id.
