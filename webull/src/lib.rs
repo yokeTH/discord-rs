@@ -40,6 +40,8 @@ mod client;
 #[cfg(feature = "http")]
 mod error;
 #[cfg(feature = "http")]
+mod fundamentals;
+#[cfg(feature = "http")]
 mod signature;
 #[cfg(feature = "http")]
 mod trade_misc;
