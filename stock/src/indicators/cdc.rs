@@ -213,17 +213,22 @@ pub fn generate_chart(
 
         let title = format!("{} | ${:.2}", symbol.to_uppercase(), last_price);
         let font = (FONT_NAME, 14).into_font().color(&WHITE);
-        root.draw_text(&title, &font, (WIDTH as i32 / 2 - (title.len() as i32 * 4), 10))?;
+        root.draw_text(
+            &title,
+            &font,
+            (WIDTH as i32 / 2 - (title.len() as i32 * 4), 10),
+        )?;
 
-        let label_style = (FONT_NAME, 12)
-            .into_font()
-            .color(&RGBColor(160, 160, 160));
+        let label_style = (FONT_NAME, 12).into_font().color(&RGBColor(160, 160, 160));
 
         let mut chart = ChartBuilder::on(&root)
             .margin(15)
             .x_label_area_size(50)
             .y_label_area_size(70)
-            .build_cartesian_2d(0i32..(n as i32 - 1), (y_min - y_padding)..(y_max + y_padding))?;
+            .build_cartesian_2d(
+                0i32..(n as i32 - 1),
+                (y_min - y_padding)..(y_max + y_padding),
+            )?;
 
         chart
             .configure_mesh()
@@ -245,7 +250,11 @@ pub fn generate_chart(
 
         // Draw grid lines manually
         let grid_color = RGBColor(45, 47, 69).to_rgba();
-        let grid_style = ShapeStyle { color: grid_color, filled: false, stroke_width: 1 };
+        let grid_style = ShapeStyle {
+            color: grid_color,
+            filled: false,
+            stroke_width: 1,
+        };
         let y_step = ((y_max - y_min) / 8.0).max(0.01);
         let mut y_tick = y_min - y_padding;
         while y_tick <= y_max + y_padding {
@@ -257,24 +266,46 @@ pub fn generate_chart(
         }
 
         // Bull price (green)
-        let green_style = ShapeStyle { color: RGBColor(0, 208, 132).to_rgba(), filled: false, stroke_width: 2 };
+        let green_style = ShapeStyle {
+            color: RGBColor(0, 208, 132).to_rgba(),
+            filled: false,
+            stroke_width: 2,
+        };
         for seg in nan_segments(&price_green) {
             chart.draw_series(LineSeries::new(seg, green_style))?;
         }
         // Bear price (red)
-        let red_style = ShapeStyle { color: RGBColor(255, 77, 79).to_rgba(), filled: false, stroke_width: 2 };
+        let red_style = ShapeStyle {
+            color: RGBColor(255, 77, 79).to_rgba(),
+            filled: false,
+            stroke_width: 2,
+        };
         for seg in nan_segments(&price_red) {
             chart.draw_series(LineSeries::new(seg, red_style))?;
         }
         // EMA12 (blue)
         chart.draw_series(LineSeries::new(
-            display_ema12.iter().enumerate().map(|(i, &v)| (i as i32, v)),
-            ShapeStyle { color: RGBColor(0, 100, 255).to_rgba(), filled: false, stroke_width: 1 },
+            display_ema12
+                .iter()
+                .enumerate()
+                .map(|(i, &v)| (i as i32, v)),
+            ShapeStyle {
+                color: RGBColor(0, 100, 255).to_rgba(),
+                filled: false,
+                stroke_width: 1,
+            },
         ))?;
         // EMA26 (orange)
         chart.draw_series(LineSeries::new(
-            display_ema26.iter().enumerate().map(|(i, &v)| (i as i32, v)),
-            ShapeStyle { color: RGBColor(255, 100, 0).to_rgba(), filled: false, stroke_width: 1 },
+            display_ema26
+                .iter()
+                .enumerate()
+                .map(|(i, &v)| (i as i32, v)),
+            ShapeStyle {
+                color: RGBColor(255, 100, 0).to_rgba(),
+                filled: false,
+                stroke_width: 1,
+            },
         ))?;
 
         root.present()?;
@@ -297,7 +328,11 @@ pub fn generate_chart(
     let tree = resvg::usvg::Tree::from_str(&svg_string, &options)?;
     let mut pixmap = resvg::tiny_skia::Pixmap::new(WIDTH, HEIGHT)
         .ok_or_else(|| anyhow::anyhow!("failed to create pixmap"))?;
-    resvg::render(&tree, resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::default(),
+        &mut pixmap.as_mut(),
+    );
     let png_bytes = pixmap.encode_png()?;
 
     info!(bytes = png_bytes.len(), "chart rendered");
