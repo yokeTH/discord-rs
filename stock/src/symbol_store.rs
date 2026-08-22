@@ -89,11 +89,10 @@ impl SymbolStore {
     /// Distinct channels that have at least one watched symbol.
     #[instrument(name = "symbol_store_channels", skip(self))]
     pub async fn channels(&self) -> Result<Vec<i64>, Error> {
-        let channels: Vec<i64> = sqlx::query_scalar!(
-            "SELECT DISTINCT channel_id AS \"channel_id!\" FROM watchlist"
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let channels: Vec<i64> =
+            sqlx::query_scalar!("SELECT DISTINCT channel_id AS \"channel_id!\" FROM watchlist")
+                .fetch_all(&self.pool)
+                .await?;
         debug!(count = channels.len(), "channels done");
         Ok(channels)
     }
