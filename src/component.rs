@@ -2,6 +2,7 @@ use poise::serenity_prelude as serenity;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, error, info, instrument, warn};
 
+use crate::command::stock::trade::{self, TRADE_CANCEL_PREFIX, TRADE_CONFIRM_PREFIX};
 use crate::{Data, Error};
 
 pub const SELECT_DELETE_ID: &str = "select_delete";
@@ -19,6 +20,22 @@ pub async fn handle_component(
     interaction: &serenity::ComponentInteraction,
 ) -> Result<(), Error> {
     let id = interaction.data.custom_id.as_str();
+
+    if let Some(req_id) = id.strip_prefix(TRADE_CONFIRM_PREFIX) {
+        return trade::confirm(ctx, data, interaction, req_id).await;
+    }
+
+    if let Some(req_id) = id.strip_prefix(TRADE_CANCEL_PREFIX) {
+        return trade::cancel(ctx, data, interaction, req_id).await;
+    }
+
+    if id == trade::SELL_SELECT_ID {
+        return trade::handle_sell_select(ctx, data, interaction).await;
+    }
+
+    if let Some(rest) = id.strip_prefix(trade::SELL_UNIT_PREFIX) {
+        return trade::handle_sell_unit(ctx, data, interaction, rest).await;
+    }
 
     if id == SELECT_DELETE_ID {
         let values = match &interaction.data.kind {
@@ -186,5 +203,28 @@ pub async fn handle_component(
     }
 
     debug!("ignored unrelated component interaction");
+    Ok(())
+}
+
+/// Route a submitted modal (currently just the `/stock sell` quantity modal).
+#[instrument(
+    name = "handle_modal",
+    skip(ctx, data, interaction),
+    fields(custom_id = %interaction.data.custom_id, user_id = %interaction.user.id)
+)]
+pub async fn handle_modal(
+    ctx: &serenity::Context,
+    data: &Data,
+    interaction: &serenity::ModalInteraction,
+) -> Result<(), Error> {
+    if interaction
+        .data
+        .custom_id
+        .starts_with(trade::SELL_MODAL_PREFIX)
+    {
+        return trade::handle_sell_modal(ctx, data, interaction).await;
+    }
+
+    debug!("ignored unrelated modal interaction");
     Ok(())
 }

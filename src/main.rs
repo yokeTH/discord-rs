@@ -1,9 +1,15 @@
-use std::{io::IsTerminal, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    io::IsTerminal,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use anyhow::Result;
 use bot::Error;
-use bot::component::handle_component;
-use bot::{Data, command::stock::stock_command, config::Config};
+use bot::component::{handle_component, handle_modal};
+use bot::webull_session;
+use bot::{Data, command::stock::stock_command, command::webull::webull_command, config::Config};
 use chrono_tz::America::New_York;
 use poise::serenity_prelude as serenity;
 use poise::{Framework, FrameworkOptions};
@@ -24,17 +30,29 @@ pub async fn event_handler(
     _framework_ctx: poise::FrameworkContext<'_, Data, Error>,
     data: &Data,
 ) -> Result<(), Error> {
-    if let serenity::FullEvent::InteractionCreate { interaction, .. } = event
-        && let serenity::Interaction::Component(component) = interaction
-    {
-        debug!(
-            custom_id = %component.data.custom_id,
-            user_id = %component.user.id,
-            "component interaction"
-        );
-
-        if let Err(e) = handle_component(serenity_ctx, data, component).await {
-            warn!(error = ?e, "handle_component failed");
+    if let serenity::FullEvent::InteractionCreate { interaction, .. } = event {
+        match interaction {
+            serenity::Interaction::Component(component) => {
+                debug!(
+                    custom_id = %component.data.custom_id,
+                    user_id = %component.user.id,
+                    "component interaction"
+                );
+                if let Err(e) = handle_component(serenity_ctx, data, component).await {
+                    warn!(error = ?e, "handle_component failed");
+                }
+            }
+            serenity::Interaction::Modal(modal) => {
+                debug!(
+                    custom_id = %modal.data.custom_id,
+                    user_id = %modal.user.id,
+                    "modal interaction"
+                );
+                if let Err(e) = handle_modal(serenity_ctx, data, modal).await {
+                    warn!(error = ?e, "handle_modal failed");
+                }
+            }
+            _ => {}
         }
     }
     Ok(())
@@ -86,21 +104,24 @@ async fn main() -> Result<()> {
     let price_client = Arc::new(PriceClient::from_env()?);
     info!("price client initialized");
 
-    // Keep the Webull access token alive in the background (if configured).
-    match WebullClient::from_env() {
-        Ok(webull) if webull.access_token().is_some() => {
-            token_refresh::spawn(Arc::new(webull));
-            info!("webull token auto-refresh started");
+    // One Webull client shared by the trade commands, the token bootstrap, and
+    // the background refresh. Clones share the same in-memory access token, so a
+    // token issued by the bootstrap is seen by the commands. The lifecycle is
+    // started later, once `client.http` exists to DM the owner.
+    let webull: Option<Arc<WebullClient>> = match WebullClient::from_env() {
+        Ok(client) => Some(Arc::new(client)),
+        Err(e) => {
+            debug!(error = ?e, "webull not configured (missing app key/secret); trading disabled");
+            None
         }
-        Ok(_) => warn!(
-            "webull configured but WEBULL_ACCESS_TOKEN is unset; \
-             run the create_token example to issue one"
-        ),
-        Err(e) => debug!(error = ?e, "webull not configured; token refresh disabled"),
+    };
+
+    if config.owner_id.is_none() {
+        warn!("OWNER_ID is unset; trading and /webull login are disabled");
     }
 
     let intents = GatewayIntents::non_privileged();
-    let commands = vec![stock_command()];
+    let commands = vec![stock_command(), webull_command()];
 
     let framework = Framework::builder()
         .options(FrameworkOptions {
@@ -113,11 +134,13 @@ async fn main() -> Result<()> {
             let symbol_store = Arc::clone(&symbol_store);
             let price_client = Arc::clone(&price_client);
             let config = config.clone();
+            let webull = webull.clone();
 
             move |ctx, ready, framework| {
                 let symbol_store = Arc::clone(&symbol_store);
                 let price_client = Arc::clone(&price_client);
                 let config = config.clone();
+                let webull = webull.clone();
 
                 Box::pin(async move {
                     info!(
@@ -148,6 +171,10 @@ async fn main() -> Result<()> {
                     Ok(Data {
                         symbol_store,
                         price_client,
+                        webull,
+                        webull_account_id: config.webull_account_id.clone(),
+                        owner_id: config.owner_id,
+                        pending_trades: Arc::new(Mutex::new(HashMap::new())),
                     })
                 })
             }
@@ -160,6 +187,15 @@ async fn main() -> Result<()> {
         .expect("Err creating client");
 
     let http = client.http.clone();
+
+    // Start the Webull token lifecycle now that HTTP is available to DM the
+    // owner: validate/keep any configured token, else issue one and verify it,
+    // and keep whatever token we end up with alive in the background.
+    if let Some(webull) = &webull {
+        token_refresh::spawn(Arc::clone(webull));
+        webull_session::spawn_bootstrap(Arc::clone(webull), http.clone(), config.owner_id);
+        info!("webull token bootstrap + auto-refresh started");
+    }
 
     let sched = JobScheduler::new().await?;
     info!("job scheduler created");
@@ -180,9 +216,7 @@ async fn main() -> Result<()> {
                 Box::pin(
                     async move {
                         info!("starting daily run");
-                        if let Err(e) =
-                            daily::run_daily(http, price_client, symbol_store).await
-                        {
+                        if let Err(e) = daily::run_daily(http, price_client, symbol_store).await {
                             error!(error = ?e, "run_daily failed");
                         } else {
                             info!("daily run complete");
