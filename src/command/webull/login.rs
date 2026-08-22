@@ -1,21 +1,16 @@
-//! `/webull` commands — currently just `login`, which (re)issues a Webull access
-//! token and DMs the owner the verification steps.
-
-use crate::command::auth::owner_only;
-use crate::webull_session;
-use crate::{Context, Error};
+//! `/webull login` — (re)issue a Webull access token and DM the owner the
+//! verification steps.
 
 use tracing::{info, instrument};
 
-#[poise::command(slash_command, rename = "webull", subcommands("login"))]
-pub async fn webull_command(_: Context<'_>) -> Result<(), Error> {
-    Ok(())
-}
+use crate::auth::owner_only;
+use crate::webull_session;
+use crate::{Context, Error};
 
 /// Issue a fresh Webull token and DM you the SMS verification steps.
 #[poise::command(slash_command, check = "owner_only")]
 #[instrument(name = "cmd_webull_login", skip(ctx), fields(user_id = %ctx.author().id))]
-async fn login(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn login(ctx: Context<'_>) -> Result<(), Error> {
     let Some(client) = ctx.data().webull.clone() else {
         ctx.send(
             poise::CreateReply::default()

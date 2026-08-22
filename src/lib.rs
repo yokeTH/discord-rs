@@ -3,12 +3,15 @@ use std::sync::Arc;
 use stock::{PriceClient, SymbolStore};
 use webull::WebullClient;
 
+pub mod auth;
 pub mod command;
 pub mod component;
 pub mod config;
+pub mod order;
+pub mod render;
 pub mod webull_session;
 
-use command::stock::trade::PendingTrades;
+use order::PendingTrades;
 
 pub struct Data {
     pub symbol_store: Arc<SymbolStore>,
