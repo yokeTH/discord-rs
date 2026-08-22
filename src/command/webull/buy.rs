@@ -25,7 +25,9 @@ pub async fn buy(
     #[description = "Unit for size"] unit: Unit,
     #[description = "Limit price (shares only; blank = market)"] limit_price: Option<f64>,
 ) -> Result<(), Error> {
-    ctx.defer().await?;
+    // The preview shows share/dollar sizing and an estimated cost, so the whole
+    // flow — including the Confirm/Cancel message it edits — stays ephemeral.
+    ctx.defer_ephemeral().await?;
 
     match prepare_order(
         ctx.data(),
@@ -42,7 +44,8 @@ pub async fn buy(
             ctx.send(
                 poise::CreateReply::default()
                     .content(prepared.content)
-                    .components(vec![prepared.row]),
+                    .components(vec![prepared.row])
+                    .ephemeral(true),
             )
             .await?;
         }
