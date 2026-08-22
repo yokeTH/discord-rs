@@ -9,26 +9,32 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::time::{MissedTickBehavior, interval};
-use tracing::{info, warn};
+use tokio::time::{Instant, MissedTickBehavior, interval_at};
+use tracing::{debug, info, warn};
 use webull::WebullClient;
 
 /// How often to refresh — comfortably within Webull's ~15-day expiry.
 const REFRESH_INTERVAL: Duration = Duration::from_secs(12 * 60 * 60);
 
-/// Spawn the refresh loop. The first refresh runs immediately, doubling as a
-/// startup validity check for the configured token.
+/// Spawn the refresh loop. It ticks every [`REFRESH_INTERVAL`] and refreshes the
+/// in-memory token in place; ticks are skipped while no token is set yet (the
+/// bootstrap may still be verifying one). The first tick is delayed a full
+/// interval so it never races a token the bootstrap just installed.
 pub fn spawn(client: Arc<WebullClient>) {
     tokio::spawn(async move {
-        let mut ticker = interval(REFRESH_INTERVAL);
+        let mut ticker = interval_at(Instant::now() + REFRESH_INTERVAL, REFRESH_INTERVAL);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
             ticker.tick().await;
+            if client.access_token().is_none() {
+                debug!("no webull token set; skipping refresh");
+                continue;
+            }
             match client.refresh_and_store().await {
                 Ok(t) => info!(status = ?t.status, expires = t.expires, "webull token refreshed"),
                 Err(e) => warn!(
                     error = ?e,
-                    "webull token refresh failed; re-run the create_token example if it expired",
+                    "webull token refresh failed; will retry (run /webull login if it expired)",
                 ),
             }
         }

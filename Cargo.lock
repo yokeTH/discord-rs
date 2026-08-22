@@ -137,6 +137,7 @@ dependencies = [
  "chrono-tz",
  "dotenvy",
  "poise",
+ "serde_json",
  "serenity",
  "stock",
  "tokio",
@@ -144,6 +145,7 @@ dependencies = [
  "tracing",
  "tracing-futures",
  "tracing-subscriber",
+ "uuid",
  "webull",
 ]
 
